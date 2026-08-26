@@ -11,6 +11,7 @@ from flask_socketio import SocketIO
 
 from serial_manager import SerialManager
 from logger import CsvLogger
+from plug import PlugController
 from routes import create_blueprint
 
 app = Flask(__name__, template_folder="templates")
@@ -49,6 +50,7 @@ def on_disconnect():
 
 serial_mgr = SerialManager()
 csv_logger = CsvLogger()
+plug_ctrl  = PlugController()
 
 def _on_telemetry(data: dict):
     socketio.emit("telemetry", data)
@@ -58,7 +60,7 @@ serial_mgr.add_listener(_on_telemetry)
 
 # ── Routes ────────────────────────────────────────────────────────────────────
 
-app.register_blueprint(create_blueprint(serial_mgr, csv_logger))
+app.register_blueprint(create_blueprint(serial_mgr, csv_logger, plug_ctrl))
 
 @app.route("/")
 def index():

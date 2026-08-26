@@ -14,3 +14,9 @@ lib/README
 
 # Data logs
 *.csv
+
+# Tuya device credentials (contain local keys)
+devices.json
+snapshot.json
+tinytuya.json
+tuya-raw.json

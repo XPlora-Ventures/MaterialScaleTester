@@ -5,9 +5,10 @@ from flask import Blueprint, request, jsonify, send_file
 
 from serial_manager import SerialManager
 from logger import CsvLogger
+from plug import PlugController
 
 
-def create_blueprint(serial_mgr: SerialManager, csv_logger: CsvLogger) -> Blueprint:
+def create_blueprint(serial_mgr: SerialManager, csv_logger: CsvLogger, plug: PlugController) -> Blueprint:
     bp = Blueprint("api", __name__)
 
     @bp.route("/api/ports")
@@ -64,5 +65,25 @@ def create_blueprint(serial_mgr: SerialManager, csv_logger: CsvLogger) -> Bluepr
         except Exception:
             ip = "127.0.0.1"
         return jsonify({"ip": ip, "port": 8080})
+
+    @bp.route("/api/plug/on", methods=["POST"])
+    def api_plug_on():
+        try:
+            plug.turn_on()
+            return jsonify({"ok": True, "state": True})
+        except Exception as e:
+            return jsonify({"ok": False, "error": str(e)})
+
+    @bp.route("/api/plug/off", methods=["POST"])
+    def api_plug_off():
+        try:
+            plug.turn_off()
+            return jsonify({"ok": True, "state": False})
+        except Exception as e:
+            return jsonify({"ok": False, "error": str(e)})
+
+    @bp.route("/api/plug/status")
+    def api_plug_status():
+        return jsonify({"on": plug.is_on()})
 
     return bp
