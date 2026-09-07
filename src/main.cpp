@@ -190,11 +190,13 @@ static void wsEvent(WStype_t type, uint8_t *payload, size_t length) {
         case WStype_CONNECTED:
             g_ws_connected = true;
             digitalWrite(LED_WIFI, HIGH);
+            Serial.println("[WS] connected");
             emitTelemetry();
             break;
         case WStype_DISCONNECTED:
             g_ws_connected = false;
             digitalWrite(LED_WIFI, LOW);
+            Serial.println("[WS] disconnected");
             break;
         case WStype_TEXT:
             handleCommand((const char *)payload);
@@ -229,7 +231,10 @@ static void wifiCheck() {
 
 void setup() {
     Serial.begin(115200);
+    delay(500);
+    Serial.println("\n=== Material Scale Tester v" FW_VERSION " ===");
 
+    Serial.println("[I2C] init");
     Wire.begin(I2C_SDA, I2C_SCL);
     Wire.setClock(400000);
 
@@ -237,22 +242,36 @@ void setup() {
     pinMode(LED_SD,   OUTPUT); digitalWrite(LED_SD,   LOW);
     pinMode(LED_WIFI, OUTPUT); digitalWrite(LED_WIFI, LOW);
     pinMode(LED_FLT,  OUTPUT); digitalWrite(LED_FLT,  LOW);
+    Serial.println("[GPIO] pins configured");
 
     pcfFlush();
+    Serial.println("[PCF] flushed");
 
     prefs.begin("mst", false);
     g_cycle_count = prefs.getULong("cycles", 0);
+    Serial.printf("[NVS] cycle count = %lu\n", g_cycle_count);
 
+    Serial.printf("[WiFi] connecting to %s ...\n", WIFI_SSID);
     wifiConnect();
     uint32_t wifiStart = millis();
     while (WiFi.status() != WL_CONNECTED && millis() - wifiStart < 15000) {
         delay(250);
         digitalWrite(LED_HB, !digitalRead(LED_HB));
+        Serial.print(".");
+    }
+    Serial.println();
+    if (WiFi.status() == WL_CONNECTED) {
+        Serial.printf("[WiFi] connected, IP: %s\n", WiFi.localIP().toString().c_str());
+    } else {
+        Serial.println("[WiFi] FAILED — continuing without WiFi");
     }
 
+    Serial.printf("[WS] connecting to wss://%s:%d%s\n", WS_HOST, WS_PORT, WS_PATH);
     ws.beginSSL(WS_HOST, WS_PORT, WS_PATH);
     ws.onEvent(wsEvent);
     ws.setReconnectInterval(5000);
+
+    Serial.println("[BOOT] setup complete");
 }
 
 void loop() {

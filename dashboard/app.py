@@ -7,7 +7,7 @@ eventlet.monkey_patch()
 
 import os
 
-from flask import Flask, render_template
+from flask import Flask, render_template, session, redirect, url_for, request
 from flask_socketio import SocketIO
 from flask_sock import Sock
 
@@ -20,6 +20,34 @@ app = Flask(__name__, template_folder="templates")
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev")
 socketio = SocketIO(app, cors_allowed_origins="*")
 sock = Sock(app)
+
+_LOGIN_USER = os.environ.get("DASHBOARD_USER", "admin")
+_LOGIN_PASS = os.environ.get("DASHBOARD_PASS", "changeme")
+
+_PUBLIC_PATHS = {"/login", "/ws/device"}
+
+@app.before_request
+def require_login():
+    if request.path in _PUBLIC_PATHS or request.path.startswith("/socket.io"):
+        return
+    if not session.get("authed"):
+        return redirect(url_for("login"))
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    error = None
+    if request.method == "POST":
+        if (request.form.get("username") == _LOGIN_USER and
+                request.form.get("password") == _LOGIN_PASS):
+            session["authed"] = True
+            return redirect(url_for("index"))
+        error = "Invalid username or password."
+    return render_template("login.html", error=error)
+
+@app.route("/logout")
+def logout():
+    session.clear()
+    return redirect(url_for("login"))
 
 device_mgr = DeviceManager()
 csv_logger = CsvLogger()

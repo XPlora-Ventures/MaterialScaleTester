@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Login — Material Scale Tester</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0f1117; color: #e0e0e0; font-family: 'Segoe UI', sans-serif;
+         min-height: 100vh; display: flex; flex-direction: column; }
+
+  header {
+    background: #1a1d27; border-bottom: 1px solid #2a2d3a;
+    padding: 14px 24px; display: flex; align-items: center; gap: 16px;
+  }
+  header h1 { font-size: 1.1rem; font-weight: 600; color: #fff; }
+  .badge { background: #252836; border: 1px solid #3a3d4a; border-radius: 4px;
+           padding: 2px 8px; font-size: 0.72rem; color: #9ba3af; }
+
+  .center { flex: 1; display: flex; align-items: center; justify-content: center; }
+
+  .card {
+    background: #1a1d27; border: 1px solid #2a2d3a; border-radius: 10px;
+    padding: 32px 36px; width: 100%; max-width: 360px;
+  }
+  .card h2 { font-size: 1rem; font-weight: 600; margin-bottom: 24px; color: #f3f4f6; }
+
+  .field { margin-bottom: 16px; }
+  .field label { display: block; font-size: 0.8rem; color: #9ba3af; margin-bottom: 6px; }
+  .field input {
+    width: 100%; background: #252836; border: 1px solid #3a3d4a; border-radius: 6px;
+    color: #e0e0e0; padding: 8px 12px; font-size: 0.9rem;
+  }
+  .field input:focus { outline: none; border-color: #3b82f6; }
+
+  .error { color: #ef4444; font-size: 0.82rem; margin-bottom: 16px; }
+
+  button {
+    width: 100%; background: #3b82f6; border: none; border-radius: 6px; color: #fff;
+    padding: 9px 0; font-size: 0.9rem; cursor: pointer; margin-top: 4px;
+  }
+  button:hover { background: #2563eb; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>XploraVentures</h1>
+  <span class="badge">Material Scale Tester</span>
+</header>
+
+<div class="center">
+  <div class="card">
+    <h2>Sign in</h2>
+    {% if error %}
+    <p class="error">{{ error }}</p>
+    {% endif %}
+    <form method="POST" action="/login">
+      <div class="field">
+        <label for="username">Username</label>
+        <input type="text" id="username" name="username" autocomplete="username" autofocus>
+      </div>
+      <div class="field">
+        <label for="password">Password</label>
+        <input type="password" id="password" name="password" autocomplete="current-password">
+      </div>
+      <button type="submit">Sign in</button>
+    </form>
+  </div>
+</div>
+
+</body>
+</html>
