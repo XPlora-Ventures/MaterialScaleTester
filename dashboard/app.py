@@ -54,6 +54,23 @@ csv_logger = CsvLogger()
 plug_ctrl  = PlugController()
 
 def _on_telemetry(data: dict):
+    msg_type = data.get("type")
+
+    if msg_type == "set_plug":
+        try:
+            if data.get("val"):
+                plug_ctrl.turn_on()
+            else:
+                plug_ctrl.turn_off()
+            socketio.emit("plug_state", {"on": bool(data.get("val"))})
+        except Exception as e:
+            print(f"[PLUG] set_plug from device error: {e}")
+        return
+
+    if msg_type in ("thermal_fault", "thermal_cleared", "thermal_alert"):
+        socketio.emit("thermal_event", data)
+        return
+
     socketio.emit("telemetry", data)
     csv_logger.log_row(data)
 

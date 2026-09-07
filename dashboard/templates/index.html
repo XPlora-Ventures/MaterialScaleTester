@@ -59,9 +59,19 @@
 
   .sensor-val { font-size: 2.4rem; font-weight: 700; color: #f3f4f6; line-height: 1; font-variant-numeric: tabular-nums; }
   .sensor-sub { font-size: 0.85rem; color: #9ba3af; margin-top: 6px; }
+
+  .alert-banner {
+    position: fixed; top: 58px; left: 50%; transform: translateX(-50%);
+    background: #1a1d27; border: 1px solid #3a3d4a; border-left-width: 4px;
+    border-radius: 8px; padding: 12px 20px; font-size: 0.85rem; color: #e0e0e0;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.5); display: none; z-index: 100;
+    max-width: 480px; width: calc(100% - 48px); text-align: center;
+  }
 </style>
 </head>
 <body>
+
+<div id="alertBanner" class="alert-banner"></div>
 
 <header>
   <div style="display:flex;flex-direction:column;gap:2px">
@@ -132,6 +142,25 @@
     </div>
   </div>
 
+  <!-- Temperature / Thermal Cutout -->
+  <div class="card" style="margin-bottom:16px">
+    <h3>Temperature — PT1000 B1·CH1</h3>
+    <div style="display:flex;align-items:flex-end;gap:20px;flex-wrap:wrap">
+      <div>
+        <div class="sensor-val">
+          <span id="tempVal">—</span><span style="font-size:1.2rem;color:#9ba3af;margin-left:4px">°C</span>
+        </div>
+        <div class="sensor-sub">Wall plug temperature</div>
+      </div>
+      <span id="thermalPill" class="status-pill" style="margin-bottom:4px">
+        <span class="dot"></span> —
+      </span>
+      <button id="btnResetThermal" class="btn ghost"
+              style="display:none;margin-left:auto;border-color:#ef4444;color:#ef4444"
+              onclick="sendCmd({cmd:'reset_thermal_fault'})">Reset Fault</button>
+    </div>
+  </div>
+
   <!-- Wall Plug -->
   <div class="card" style="margin-bottom:16px">
     <h3>Wall Plug — Brilliant 21884</h3>
@@ -162,13 +191,26 @@ socket.on("telemetry", d => {
   _setPill("drierPill", d.solenoid_drier, d.solenoid_drier ? "OPEN" : "CLOSED");
 
   _updateCycleUI(d);
+  _updateThermalUI(d);
 });
 
 // Seed state from server on page load
 fetch("/api/status").then(r => r.json()).then(d => {
   document.getElementById("connDot").className = "dot" + (d.device_connected ? " connected" : "");
-  if (d.telemetry && Object.keys(d.telemetry).length) _updateCycleUI(d.telemetry);
+  if (d.telemetry && Object.keys(d.telemetry).length) {
+    _updateCycleUI(d.telemetry);
+    _updateThermalUI(d.telemetry);
+  }
 });
+
+// ── Thermal events (fault / cleared / alert) ──────────────────────────────────
+const _thermalColors = { thermal_fault: "#f59e0b", thermal_alert: "#ef4444", thermal_cleared: "#10b981" };
+socket.on("thermal_event", d => {
+  _showAlert(d.msg, _thermalColors[d.type] || "#6b7280");
+});
+
+// ── Plug state pushed by server after thermal cutout ─────────────────────────
+socket.on("plug_state", d => { _setPlugPill(d.on); });
 
 // ── Cycle UI (display only — logic runs on ESP32) ─────────────────────────────
 let _lastState = "idle";
@@ -244,6 +286,35 @@ function _setPill(id, on, label) {
   const p = document.getElementById(id);
   p.className = "status-pill " + (on ? "on" : "off");
   p.innerHTML = `<span class="dot"></span> ${label}`;
+}
+
+function _updateThermalUI(d) {
+  if (d.temp_c === undefined) return;
+  document.getElementById("tempVal").textContent =
+    d.rtd_fault ? "ERR" : Number(d.temp_c).toFixed(1);
+
+  const cfg = {
+    ok:    { dot: "#10b981", label: "OK" },
+    fault: { dot: "#f59e0b", label: "FAULT" },
+    alert: { dot: "#ef4444", label: "ALERT" },
+  }[d.thermal] || { dot: "#4b5563", label: "—" };
+
+  const pill = document.getElementById("thermalPill");
+  pill.className = "status-pill on";
+  pill.innerHTML = `<span class="dot" style="background:${cfg.dot}"></span> ${cfg.label}`;
+
+  document.getElementById("btnResetThermal").style.display =
+    (d.thermal === "fault" || d.thermal === "alert") ? "" : "none";
+}
+
+let _alertTimer = null;
+function _showAlert(msg, color) {
+  const el = document.getElementById("alertBanner");
+  el.textContent = msg;
+  el.style.borderLeftColor = color;
+  el.style.display = "block";
+  clearTimeout(_alertTimer);
+  _alertTimer = setTimeout(() => { el.style.display = "none"; }, 10000);
 }
 
 // ── Wall Plug ─────────────────────────────────────────────────────────────────

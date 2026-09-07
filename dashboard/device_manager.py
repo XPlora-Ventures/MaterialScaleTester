@@ -46,7 +46,8 @@ class DeviceManager:
             msg = json.loads(data)
         except json.JSONDecodeError:
             return
-        self._last_telemetry = msg
+        if "type" not in msg:   # only persist regular telemetry, not typed events
+            self._last_telemetry = msg
         for cb in self._listeners:
             try:
                 cb(msg)

@@ -24,7 +24,7 @@ class CsvLogger:
             self._writer = csv.writer(self._file)
             self._writer.writerow([
                 "timestamp", "state", "solenoid_humid", "solenoid_drier",
-                "cycles", "target", "time_left_ms",
+                "cycles", "target", "time_left_ms", "temp_c", "thermal",
             ])
         return True, self._path
 
@@ -46,5 +46,7 @@ class CsvLogger:
                 data.get("cycles", ""),
                 data.get("target", ""),
                 data.get("time_left_ms", ""),
+                data.get("temp_c", ""),
+                data.get("thermal", ""),
             ])
             self._file.flush()
