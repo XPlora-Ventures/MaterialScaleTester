@@ -2,12 +2,10 @@
 #include <Wire.h>
 #include <SPI.h>
 #include <WiFi.h>
-#include <WiFiClient.h>
 #include <WebSocketsClient.h>
 #include <ArduinoJson.h>
 #include <Preferences.h>
 #include <Adafruit_MAX31865.h>
-#include "mbedtls/aes.h"
 
 #include "pin_definitions.h"
 #include "wifi_config.h"
@@ -59,101 +57,25 @@ static const char* thermalStateName() {
 }
 
 // =============================================================================
-// Tuya LAN plug control — protocol v3.3, TCP port 6668
+// Plug control — delegate to backend via WebSocket
 // =============================================================================
 
-static uint32_t g_tuya_seq = 1;
+// Forward declaration (wsSend defined in WebSocket section below)
+static void wsSend(const JsonDocument &doc);
 
-static void tuyaAesEcbEncrypt(const uint8_t *key, const uint8_t *in, uint8_t *out, size_t blocks) {
-    mbedtls_aes_context ctx;
-    mbedtls_aes_init(&ctx);
-    mbedtls_aes_setkey_enc(&ctx, key, 128);
-    for (size_t i = 0; i < blocks; i++)
-        mbedtls_aes_crypt_ecb(&ctx, MBEDTLS_AES_ENCRYPT, in + i * 16, out + i * 16);
-    mbedtls_aes_free(&ctx);
-}
-
-static uint32_t crc32buf(const uint8_t *data, size_t len) {
-    uint32_t crc = 0xFFFFFFFF;
-    for (size_t i = 0; i < len; i++) {
-        crc ^= data[i];
-        for (int j = 0; j < 8; j++)
-            crc = (crc >> 1) ^ (0xEDB88320u * (crc & 1u));
-    }
-    return ~crc;
-}
-
-static void tuyaSetPlug(bool on) {
-    if (WiFi.status() != WL_CONNECTED) {
-        Serial.println("[TUYA] no WiFi — cannot control plug");
-        return;
-    }
-
-    // Build control JSON
-    char json[192];
-    snprintf(json, sizeof(json),
-        "{\"devId\":\"%s\",\"uid\":\"%s\",\"t\":\"%lu\",\"dps\":{\"%s\":%s}}",
-        TUYA_PLUG_DEVICE_ID, TUYA_PLUG_DEVICE_ID,
-        (unsigned long)(millis() / 1000),
-        TUYA_PLUG_DPS_SWITCH, on ? "true" : "false");
-    size_t jLen = strlen(json);
-
-    // PKCS7 pad to 16-byte boundary
-    uint8_t plain[256] = {};
-    memcpy(plain, json, jLen);
-    uint8_t pad = 16 - (uint8_t)(jLen % 16);
-    for (uint8_t i = 0; i < pad; i++) plain[jLen + i] = pad;
-    size_t plainLen = jLen + pad;
-
-    // AES-128-ECB encrypt (key = first 16 bytes of local key)
-    uint8_t enc[256] = {};
-    uint8_t key[16];
-    memcpy(key, TUYA_PLUG_LOCAL_KEY, 16);
-    tuyaAesEcbEncrypt(key, plain, enc, plainLen / 16);
-
-    // v3.3 payload = 12-byte version header + encrypted data
-    uint8_t payload[300] = {};
-    memcpy(payload, "3.3\x00\x00\x00\x00\x00\x00\x00\x00\x00", 12);
-    memcpy(payload + 12, enc, plainLen);
-    size_t payloadLen = 12 + plainLen;
-
-    // Assemble Tuya packet
-    uint8_t pkt[400] = {};
-    size_t  p = 0;
-
-    pkt[p++] = 0x00; pkt[p++] = 0x00; pkt[p++] = 0x55; pkt[p++] = 0xAA; // prefix
-    uint32_t seq = g_tuya_seq++;
-    pkt[p++] = (seq >> 24) & 0xFF; pkt[p++] = (seq >> 16) & 0xFF;
-    pkt[p++] = (seq >>  8) & 0xFF; pkt[p++] = (seq      ) & 0xFF;
-    pkt[p++] = 0x00; pkt[p++] = 0x00; pkt[p++] = 0x00; pkt[p++] = 0x07; // cmd CONTROL
-    uint32_t pktlen = (uint32_t)payloadLen + 8;                           // +CRC+suffix
-    pkt[p++] = (pktlen >> 24) & 0xFF; pkt[p++] = (pktlen >> 16) & 0xFF;
-    pkt[p++] = (pktlen >>  8) & 0xFF; pkt[p++] = (pktlen      ) & 0xFF;
-    memcpy(pkt + p, payload, payloadLen); p += payloadLen;
-    uint32_t crc = crc32buf(pkt, p);
-    pkt[p++] = (crc >> 24) & 0xFF; pkt[p++] = (crc >> 16) & 0xFF;
-    pkt[p++] = (crc >>  8) & 0xFF; pkt[p++] = (crc      ) & 0xFF;
-    pkt[p++] = 0x00; pkt[p++] = 0x00; pkt[p++] = 0xAA; pkt[p++] = 0x55; // suffix
-
-    WiFiClient client;
-    client.setTimeout(2000);
-    if (!client.connect(TUYA_PLUG_IP, 6668)) {
-        Serial.printf("[TUYA] connect to %s:6668 failed\n", TUYA_PLUG_IP);
-        return;
-    }
-    client.write(pkt, p);
-    client.flush();
-    delay(200);
-    client.stop();
-    Serial.printf("[TUYA] plug %s\n", on ? "ON" : "OFF");
+static void setPlug(bool on) {
+    JsonDocument doc;
+    doc["type"] = "set_plug";
+    doc["val"]  = on;
+    wsSend(doc);
+    Serial.printf("[PLUG] requested %s via server\n", on ? "ON" : "OFF");
 }
 
 // =============================================================================
 // Thermal cutout state machine
 // =============================================================================
 
-// Forward declarations (defined later in file)
-static void wsSend(const JsonDocument &doc);
+// Forward declaration (defined later in file)
 static void cycleEngineStop();
 
 static void emitThermalEvent(const char *type, const char *msg) {
@@ -172,7 +94,7 @@ static void thermalCutoutTick() {
                 g_thermal_state  = ThermalState::FAULT;
                 g_fault_start_ms = millis();
                 cycleEngineStop();
-                tuyaSetPlug(false);
+                setPlug(false);
                 emitThermalEvent("thermal_fault",
                     "Temperature exceeded cutoff — plug OFF, cycle stopped");
             }
@@ -182,7 +104,7 @@ static void thermalCutoutTick() {
             if (g_rtd_fault || g_pt1000_temp_c < THERMAL_RESET_C) {
                 // cooled down in time
                 g_thermal_state = ThermalState::OK;
-                tuyaSetPlug(true);
+                setPlug(true);
                 emitThermalEvent("thermal_cleared", "Temperature normalised — plug restored");
             } else if (millis() - g_fault_start_ms >= THERMAL_ALERT_MS) {
                 g_thermal_state = ThermalState::ALERT;
@@ -375,7 +297,7 @@ static void handleCommand(const char *payload) {
     else if (strcmp(cmd, "reset_thermal_fault") == 0) {
         if (g_thermal_state != ThermalState::OK) {
             g_thermal_state = ThermalState::OK;
-            tuyaSetPlug(true);
+            setPlug(true);
             Serial.println("[THERMAL] fault reset by operator — plug ON");
         }
     }
