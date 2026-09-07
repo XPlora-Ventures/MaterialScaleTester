@@ -21,17 +21,23 @@ class PlugController:
     def _send(self, value: bool):
         if not all([_REGION, _KEY, _SECRET, _DEVICE_ID]):
             raise RuntimeError("Tuya env vars not set (TUYA_REGION, TUYA_API_KEY, TUYA_API_SECRET, TUYA_DEVICE_ID)")
+        print(f"[PLUG] tinytuya {tinytuya.__version__}", flush=True)
         c = self._cloud()
-        # Send array directly — no {"commands": ...} wrapper
+        # Try v2.0 iot-03 endpoint
         result = c.cloudrequest(
             f'iot-03/devices/{_DEVICE_ID}/commands',
             action='POST',
-            post=[{"code": "switch_1", "value": value}]
+            post={"commands": [{"code": "switch_1", "value": value}]},
+            ver='v2.0'
         )
-        print(f"[PLUG] array {'on' if value else 'off'} -> {result}", flush=True)
+        print(f"[PLUG] v2.0 iot-03 {'on' if value else 'off'} -> {result}", flush=True)
         if isinstance(result, dict) and not result.get('Error') and result.get('success') is not False:
             return
-        raise RuntimeError(result.get('Payload') or result.get('msg') or str(result))
+        # Fallback: v1.0 sendcommand
+        result2 = c.sendcommand(_DEVICE_ID, [{"code": "switch_1", "value": value}])
+        print(f"[PLUG] v1.0 sendcommand {'on' if value else 'off'} -> {result2}", flush=True)
+        if isinstance(result2, dict) and result2.get('Error'):
+            raise RuntimeError(result2.get('Payload') or result2.get('msg') or str(result2))
 
     def turn_on(self):
         self._send(True)
