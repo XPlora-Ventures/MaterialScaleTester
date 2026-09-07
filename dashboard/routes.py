@@ -61,4 +61,12 @@ def create_blueprint(device_mgr: DeviceManager, csv_logger: CsvLogger, plug: Plu
     def api_plug_status():
         return jsonify({"on": plug.is_on()})
 
+    @bp.route("/api/plug/debug")
+    def api_plug_debug():
+        try:
+            result = plug.list_devices()
+            return jsonify({"ok": True, "devices": result})
+        except Exception as e:
+            return jsonify({"ok": False, "error": str(e)})
+
     return bp

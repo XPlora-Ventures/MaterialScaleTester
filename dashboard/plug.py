@@ -32,6 +32,9 @@ class PlugController:
     def turn_off(self):
         self._send(False)
 
+    def list_devices(self):
+        return self._cloud().getdevices()
+
     def is_on(self) -> bool:
         try:
             result = self._cloud().getstatus(_DEVICE_ID)
