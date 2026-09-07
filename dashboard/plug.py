@@ -1,26 +1,32 @@
+import os
 import tinytuya
 
-_DEVICE_ID = "eb91ec27955ebdee6emm4e"
-_LOCAL_KEY  = ";p-v6{(o>d:/W9&s"
-_IP         = "192.168.0.48"
-_VERSION    = 3.3
+_REGION    = os.environ["TUYA_REGION"]     # e.g. "us", "eu", "cn", "in"
+_KEY       = os.environ["TUYA_API_KEY"]
+_SECRET    = os.environ["TUYA_API_SECRET"]
+_DEVICE_ID = os.environ["TUYA_DEVICE_ID"]
 
 
 class PlugController:
-    def _dev(self):
-        d = tinytuya.OutletDevice(_DEVICE_ID, _IP, _LOCAL_KEY)
-        d.set_version(_VERSION)
-        return d
+    def _cloud(self):
+        return tinytuya.Cloud(
+            apiRegion=_REGION,
+            apiKey=_KEY,
+            apiSecret=_SECRET,
+        )
 
     def turn_on(self):
-        self._dev().turn_on()
+        self._cloud().sendcommand(_DEVICE_ID, [{"code": "switch_1", "value": True}])
 
     def turn_off(self):
-        self._dev().turn_off()
+        self._cloud().sendcommand(_DEVICE_ID, [{"code": "switch_1", "value": False}])
 
     def is_on(self) -> bool:
         try:
-            data = self._dev().status()
-            return bool(data.get("dps", {}).get("1", False))
+            result = self._cloud().getstatus(_DEVICE_ID)
+            for item in result.get("result", []):
+                if item.get("code") == "switch_1":
+                    return bool(item["value"])
         except Exception:
-            return False
+            pass
+        return False

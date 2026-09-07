@@ -1,39 +1,25 @@
 import os
-import socket as _socket
 
 from flask import Blueprint, request, jsonify, send_file
 
-from serial_manager import SerialManager
+from device_manager import DeviceManager
 from logger import CsvLogger
 from plug import PlugController
 
 
-def create_blueprint(serial_mgr: SerialManager, csv_logger: CsvLogger, plug: PlugController) -> Blueprint:
+def create_blueprint(device_mgr: DeviceManager, csv_logger: CsvLogger, plug: PlugController) -> Blueprint:
     bp = Blueprint("api", __name__)
 
-    @bp.route("/api/ports")
-    def api_ports():
-        return jsonify(serial_mgr.list_ports())
-
-    @bp.route("/api/connect", methods=["POST"])
-    def api_connect():
-        body = request.json or {}
-        port = body.get("port", "")
-        baud = int(body.get("baud", 115200))
-        try:
-            serial_mgr.connect(port, baud)
-            return jsonify({"ok": True})
-        except Exception as e:
-            return jsonify({"ok": False, "error": str(e)})
-
-    @bp.route("/api/disconnect", methods=["POST"])
-    def api_disconnect():
-        serial_mgr.disconnect()
-        return jsonify({"ok": True})
+    @bp.route("/api/status")
+    def api_status():
+        return jsonify({
+            "device_connected": device_mgr.connected,
+            "telemetry": device_mgr.last_telemetry,
+        })
 
     @bp.route("/api/command", methods=["POST"])
     def api_command():
-        serial_mgr.send(request.json or {})
+        device_mgr.send(request.json or {})
         return jsonify({"ok": True})
 
     @bp.route("/api/log/start", methods=["POST"])
@@ -54,17 +40,6 @@ def create_blueprint(serial_mgr: SerialManager, csv_logger: CsvLogger, plug: Plu
         if path and os.path.exists(path):
             return send_file(path, as_attachment=True)
         return jsonify({"error": "no log"}), 404
-
-    @bp.route("/api/ip")
-    def api_ip():
-        try:
-            s = _socket.socket(_socket.AF_INET, _socket.SOCK_DGRAM)
-            s.connect(("8.8.8.8", 80))
-            ip = s.getsockname()[0]
-            s.close()
-        except Exception:
-            ip = "127.0.0.1"
-        return jsonify({"ip": ip, "port": 8080})
 
     @bp.route("/api/plug/on", methods=["POST"])
     def api_plug_on():

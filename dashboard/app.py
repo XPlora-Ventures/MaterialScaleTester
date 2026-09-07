@@ -1,54 +1,24 @@
 """Material Scale Tester Dashboard — entry point."""
 
-__version__ = "1.0.0"
+__version__ = "2.0.0"
 
 import os
-import threading
-import webbrowser
 
 from flask import Flask, render_template
 from flask_socketio import SocketIO
+from flask_sock import Sock
 
-from serial_manager import SerialManager
+from device_manager import DeviceManager
 from logger import CsvLogger
 from plug import PlugController
 from routes import create_blueprint
 
 app = Flask(__name__, template_folder="templates")
+app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev")
 socketio = SocketIO(app, cors_allowed_origins="*")
+sock = Sock(app)
 
-# ── Shutdown on tab close ─────────────────────────────────────────────────────
-
-_shutdown_timer = None
-_shutdown_timer_lock = threading.Lock()
-
-def _schedule_shutdown():
-    global _shutdown_timer
-    def _do_shutdown():
-        os._exit(0)
-    with _shutdown_timer_lock:
-        _shutdown_timer = threading.Timer(3.0, _do_shutdown)
-        _shutdown_timer.daemon = True
-        _shutdown_timer.start()
-
-def _cancel_shutdown():
-    global _shutdown_timer
-    with _shutdown_timer_lock:
-        if _shutdown_timer is not None:
-            _shutdown_timer.cancel()
-            _shutdown_timer = None
-
-@socketio.on("connect")
-def on_connect():
-    _cancel_shutdown()
-
-@socketio.on("disconnect")
-def on_disconnect():
-    _schedule_shutdown()
-
-# ── Subsystems ────────────────────────────────────────────────────────────────
-
-serial_mgr = SerialManager()
+device_mgr = DeviceManager()
 csv_logger = CsvLogger()
 plug_ctrl  = PlugController()
 
@@ -56,11 +26,27 @@ def _on_telemetry(data: dict):
     socketio.emit("telemetry", data)
     csv_logger.log_row(data)
 
-serial_mgr.add_listener(_on_telemetry)
+device_mgr.add_listener(_on_telemetry)
+
+# ── ESP32 WebSocket endpoint ──────────────────────────────────────────────────
+
+@sock.route("/ws/device")
+def device_ws(ws):
+    device_mgr.attach(ws)
+    socketio.emit("device_connected", True)
+    try:
+        while True:
+            msg = ws.receive()
+            if msg is None:
+                break
+            device_mgr.on_message(msg)
+    finally:
+        device_mgr.detach()
+        socketio.emit("device_connected", False)
 
 # ── Routes ────────────────────────────────────────────────────────────────────
 
-app.register_blueprint(create_blueprint(serial_mgr, csv_logger, plug_ctrl))
+app.register_blueprint(create_blueprint(device_mgr, csv_logger, plug_ctrl))
 
 @app.route("/")
 def index():
@@ -69,5 +55,5 @@ def index():
 # ── Entry point ───────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    webbrowser.open("http://localhost:8080")
-    socketio.run(app, host="0.0.0.0", port=8080, debug=False, allow_unsafe_werkzeug=True)
+    port = int(os.environ.get("PORT", 8080))
+    socketio.run(app, host="0.0.0.0", port=port, debug=False, allow_unsafe_werkzeug=True)

@@ -22,7 +22,6 @@
 
   .grid { display: grid; gap: 16px; }
   .grid-2 { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
-  .grid-3 { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
 
   .card {
     background: #1a1d27; border: 1px solid #2a2d3a; border-radius: 10px; padding: 18px;
@@ -30,27 +29,24 @@
   .card h3 { font-size: 0.8rem; color: #6b7280; text-transform: uppercase;
              letter-spacing: 0.05em; margin-bottom: 12px; }
 
-  .sensor-val { font-size: 2.4rem; font-weight: 700; color: #f3f4f6; line-height: 1; }
-  .sensor-sub { font-size: 0.85rem; color: #9ba3af; margin-top: 6px; }
-  .sensor-unit { font-size: 1rem; color: #6b7280; }
-
   .row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
   .row:last-child { margin-bottom: 0; }
 
   label { font-size: 0.82rem; color: #9ba3af; min-width: 110px; }
-  select, input[type=number] {
+  input[type=number] {
     background: #252836; border: 1px solid #3a3d4a; border-radius: 6px;
     color: #e0e0e0; padding: 6px 10px; font-size: 0.85rem; flex: 1;
   }
-  select:focus, input:focus { outline: none; border-color: #3b82f6; }
+  input:focus { outline: none; border-color: #3b82f6; }
 
   button.btn {
     background: #3b82f6; border: none; border-radius: 6px; color: #fff;
     padding: 7px 16px; font-size: 0.85rem; cursor: pointer; white-space: nowrap;
   }
   button.btn:hover { background: #2563eb; }
+  button.btn:disabled { opacity: 0.4; cursor: not-allowed; }
   button.btn.ghost { background: #252836; border: 1px solid #3a3d4a; color: #e0e0e0; }
-  button.btn.ghost:hover { background: #2f3340; }
+  button.btn.ghost:hover:not(:disabled) { background: #2f3340; }
 
   .status-pill {
     display: inline-flex; align-items: center; gap: 6px;
@@ -61,60 +57,39 @@
   .status-pill.on .dot { background: #10b981; }
   .status-pill.off .dot { background: #4b5563; }
 
-  .divider { border: none; border-top: 1px solid #2a2d3a; margin: 12px 0; }
+  .sensor-val { font-size: 2.4rem; font-weight: 700; color: #f3f4f6; line-height: 1; font-variant-numeric: tabular-nums; }
+  .sensor-sub { font-size: 0.85rem; color: #9ba3af; margin-top: 6px; }
 </style>
 </head>
 <body>
 
 <header>
   <div style="display:flex;flex-direction:column;gap:2px">
-    <span id="ipBadge" style="font-size:0.68rem;color:#6b7280;letter-spacing:0.03em"></span>
     <h1>XploraVentures</h1>
   </div>
   <span class="badge">Material Scale Tester</span>
   <span id="fwBadge" class="badge" style="display:none"></span>
-  <div id="connDot" class="dot" title="Serial connection"></div>
+  <div id="connDot" class="dot" title="ESP32 connection" style="margin-left:auto"></div>
 </header>
 
 <div class="tab">
-
-  <!-- Connection -->
-  <div class="card" style="margin-bottom:16px">
-    <h3>Serial Connection</h3>
-    <div class="row">
-      <label>Port</label>
-      <select id="portSel"></select>
-      <button class="btn ghost" onclick="refreshPorts()">Refresh</button>
-    </div>
-    <div class="row">
-      <label>Baud</label>
-      <select id="baudSel">
-        <option value="115200" selected>115200</option>
-        <option value="9600">9600</option>
-      </select>
-    </div>
-    <div class="row" style="margin-top:4px">
-      <button class="btn" onclick="connect()">Connect</button>
-      <button class="btn ghost" onclick="disconnect()">Disconnect</button>
-    </div>
-  </div>
 
   <!-- Solenoids -->
   <div class="grid grid-2" style="margin-bottom:16px">
     <div class="card">
       <h3>Humidity Solenoid — CH1</h3>
       <div class="row">
-        <span id="humidPill" class="status-pill off"><span class="dot"></span> OFF</span>
-        <button class="btn" onclick="setSolenoid('humidity', true)">Open</button>
-        <button class="btn ghost" onclick="setSolenoid('humidity', false)">Close</button>
+        <span id="humidPill" class="status-pill off"><span class="dot"></span> CLOSED</span>
+        <button class="btn"       onclick="sendCmd({cmd:'set_humidity',val:true})">Open</button>
+        <button class="btn ghost" onclick="sendCmd({cmd:'set_humidity',val:false})">Close</button>
       </div>
     </div>
     <div class="card">
       <h3>Drier Solenoid — CH0</h3>
       <div class="row">
-        <span id="drierPill" class="status-pill off"><span class="dot"></span> OFF</span>
-        <button class="btn" onclick="setSolenoid('drier', true)">Open</button>
-        <button class="btn ghost" onclick="setSolenoid('drier', false)">Close</button>
+        <span id="drierPill" class="status-pill off"><span class="dot"></span> CLOSED</span>
+        <button class="btn"       onclick="sendCmd({cmd:'set_drier',val:true})">Open</button>
+        <button class="btn ghost" onclick="sendCmd({cmd:'set_drier',val:false})">Close</button>
       </div>
     </div>
   </div>
@@ -134,19 +109,20 @@
     </div>
     <div class="row">
       <label>Target cycles</label>
-      <input type="number" id="targetCycles" value="0" min="0" max="999" style="max-width:80px">
+      <input type="number" id="targetCycles" value="0" min="0" max="9999" style="max-width:80px">
       <span style="font-size:0.85rem;color:#9ba3af">cycles &nbsp;(0 = ∞)</span>
     </div>
     <div class="row" style="margin-top:4px">
       <button class="btn"       id="btnStart" onclick="cycleStart()">Start Cycle</button>
       <button class="btn ghost" id="btnPause" onclick="cyclePauseResume()" disabled>Pause</button>
       <button class="btn ghost" id="btnStop"  onclick="cycleStop()" disabled>Stop</button>
-      <span id="cycleStatus" style="font-size:0.8rem;color:#6b7280;margin-left:8px"></span>
     </div>
+
+    <!-- Live status — shown once running -->
     <div id="cycleCountdown" style="display:none;margin-top:14px">
       <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px">
         <span id="cyclePhasePill" class="status-pill"></span>
-        <span id="cycleTimeLeft" style="font-size:2rem;font-weight:700;color:#f3f4f6;font-variant-numeric:tabular-nums;letter-spacing:0.05em"></span>
+        <span id="cycleTimeLeft" class="sensor-val" style="font-size:2rem"></span>
         <span id="cycleCntBadge" style="margin-left:auto;font-size:0.85rem;color:#9ba3af;white-space:nowrap"></span>
       </div>
       <div style="background:#252836;border-radius:4px;height:6px;overflow:hidden">
@@ -160,7 +136,7 @@
     <h3>Wall Plug — Brilliant 21884</h3>
     <div class="row">
       <span id="plugPill" class="status-pill off"><span class="dot"></span> OFF</span>
-      <button class="btn" onclick="plugSet(true)">On</button>
+      <button class="btn"       onclick="plugSet(true)">On</button>
       <button class="btn ghost" onclick="plugSet(false)">Off</button>
       <span id="plugStatus" style="font-size:0.8rem;color:#6b7280;margin-left:8px"></span>
     </div>
@@ -168,97 +144,127 @@
 
   <!-- Logging -->
   <div class="card" style="margin-bottom:16px">
-    <h3>PC Logging</h3>
+    <h3>Logging</h3>
     <div class="row">
-      <button class="btn" onclick="logStart()">Start Log</button>
+      <button class="btn"       onclick="logStart()">Start Log</button>
       <button class="btn ghost" onclick="logStop()">Stop</button>
       <button class="btn ghost" onclick="window.open('/api/log/download')">Download CSV</button>
       <span id="logStatus" style="font-size:0.8rem;color:#6b7280;margin-left:8px"></span>
     </div>
   </div>
 
-
 </div>
 
 <script>
-fetch("/api/ip").then(r => r.json()).then(d => {
-  document.getElementById("ipBadge").textContent = d.ip + ":" + d.port;
-});
-
 const socket = io();
+
+// ── Device connection ─────────────────────────────────────────────────────────
+socket.on("device_connected", on => {
+  document.getElementById("connDot").className = "dot" + (on ? " connected" : "");
+});
 
 // ── Telemetry ─────────────────────────────────────────────────────────────────
 socket.on("telemetry", d => {
-  // Humidity solenoid
-  if (d.solenoid_humid !== undefined) {
-    const p = document.getElementById("humidPill");
-    p.className = "status-pill " + (d.solenoid_humid ? "on" : "off");
-    p.innerHTML = '<span class="dot"></span> ' + (d.solenoid_humid ? "OPEN" : "CLOSED");
-  }
-  // Drier solenoid
-  if (d.solenoid_drier !== undefined) {
-    const p = document.getElementById("drierPill");
-    p.className = "status-pill " + (d.solenoid_drier ? "on" : "off");
-    p.innerHTML = '<span class="dot"></span> ' + (d.solenoid_drier ? "OPEN" : "CLOSED");
-  }
-  // FW badge
-  if (d.fw) {
-    const b = document.getElementById("fwBadge");
-    b.textContent = "FW " + d.fw; b.style.display = "";
-  }
+  if (d.fw) { const b = document.getElementById("fwBadge"); b.textContent = "FW " + d.fw; b.style.display = ""; }
+
+  _setPill("humidPill", d.solenoid_humid, d.solenoid_humid ? "OPEN" : "CLOSED");
+  _setPill("drierPill", d.solenoid_drier, d.solenoid_drier ? "OPEN" : "CLOSED");
+
+  _updateCycleUI(d);
 });
 
-// ── Connection ────────────────────────────────────────────────────────────────
-async function refreshPorts() {
-  const r = await fetch("/api/ports"); const ports = await r.json();
-  const sel = document.getElementById("portSel");
-  sel.innerHTML = ports.map(p => `<option value="${p}">${p}</option>`).join("") || '<option value="">No ports</option>';
+// Seed state from server on page load
+fetch("/api/status").then(r => r.json()).then(d => {
+  document.getElementById("connDot").className = "dot" + (d.device_connected ? " connected" : "");
+  if (d.telemetry && Object.keys(d.telemetry).length) _updateCycleUI(d.telemetry);
+});
+
+// ── Cycle UI (display only — logic runs on ESP32) ─────────────────────────────
+let _lastState = "idle";
+let _phaseTotalMs = 0;
+
+function _updateCycleUI(d) {
+  const state = d.state || "idle";
+  const running = state === "humid" || state === "drier";
+  const paused  = state === "paused";
+  const active  = running || paused;
+
+  _lastState = state;
+
+  // buttons
+  document.getElementById("btnStart").disabled = active;
+  document.getElementById("btnPause").disabled = !active;
+  document.getElementById("btnPause").textContent = paused ? "Resume" : "Pause";
+  document.getElementById("btnStop").disabled  = !active;
+
+  // lock inputs while running
+  ["humidDur","drierDur","targetCycles"].forEach(id => {
+    document.getElementById(id).disabled = active && !paused;
+  });
+
+  // countdown panel
+  document.getElementById("cycleCountdown").style.display = active ? "" : "none";
+  if (!active) return;
+
+  const isHumid = state === "humid" || (paused && d.paused_from === "humid");
+  const color   = isHumid ? "#3b82f6" : "#f59e0b";
+  const label   = isHumid ? "HUMIDITY AIR" : "DRY AIR";
+
+  const pill = document.getElementById("cyclePhasePill");
+  pill.className = "status-pill " + (paused ? "off" : "on");
+  pill.innerHTML = `<span class="dot" style="background:${paused ? "#4b5563" : color}"></span> ${label}${paused ? " (PAUSED)" : ""}`;
+
+  // time left
+  const leftMs   = d.time_left_ms || 0;
+  const mins     = String(Math.floor(leftMs / 60000)).padStart(2, "0");
+  const secs     = String(Math.floor((leftMs % 60000) / 1000)).padStart(2, "0");
+  document.getElementById("cycleTimeLeft").textContent = mins + ":" + secs;
+
+  // progress bar
+  const totalMs = isHumid ? (d.humid_ms || 1) : (d.drier_ms || 1);
+  const pct     = Math.min(100, (leftMs / totalMs) * 100);
+  const bar     = document.getElementById("cycleBar");
+  bar.style.width      = pct + "%";
+  bar.style.background = paused ? "#4b5563" : color;
+
+  // cycle count badge
+  const target = d.target > 0 ? ` / ${d.target}` : " / ∞";
+  document.getElementById("cycleCntBadge").textContent = `Cycle ${d.cycles + 1}${target}`;
 }
 
-async function connect() {
-  const port = document.getElementById("portSel").value;
-  const baud = document.getElementById("baudSel").value;
-  const r = await fetch("/api/connect", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({port, baud}) });
-  const d = await r.json();
-  if (d.ok) document.getElementById("connDot").className = "dot connected";
-  else alert("Connect failed: " + d.error);
-}
-
-async function disconnect() {
-  await fetch("/api/disconnect", { method:"POST" });
-  document.getElementById("connDot").className = "dot";
-}
-
+// ── Commands ──────────────────────────────────────────────────────────────────
 async function sendCmd(obj) {
-  await fetch("/api/command", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify(obj) });
+  await fetch("/api/command", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify(obj) });
 }
 
-function setSolenoid(which, on) {
-  sendCmd({ cmd: "set_" + which, val: on });
+function cycleStart() {
+  sendCmd({
+    cmd: "start",
+    humid_dur:     parseFloat(document.getElementById("humidDur").value)    || 20,
+    drier_dur:     parseFloat(document.getElementById("drierDur").value)    || 40,
+    target_cycles: parseInt(document.getElementById("targetCycles").value)  || 0,
+  });
 }
+function cyclePauseResume() { sendCmd({ cmd: _lastState === "paused" ? "resume" : "pause" }); }
+function cycleStop()        { sendCmd({ cmd: "stop" }); }
 
-refreshPorts();
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function _setPill(id, on, label) {
+  const p = document.getElementById(id);
+  p.className = "status-pill " + (on ? "on" : "off");
+  p.innerHTML = `<span class="dot"></span> ${label}`;
+}
 
 // ── Wall Plug ─────────────────────────────────────────────────────────────────
-function _setPlugPill(on) {
-  const p = document.getElementById("plugPill");
-  p.className = "status-pill " + (on ? "on" : "off");
-  p.innerHTML = '<span class="dot"></span> ' + (on ? "ON" : "OFF");
-}
+function _setPlugPill(on) { _setPill("plugPill", on, on ? "ON" : "OFF"); }
 
 async function plugSet(on) {
   const st = document.getElementById("plugStatus");
-  st.textContent = on ? "Turning on…" : "Turning off…";
-  st.style.color = "#9ba3af";
+  st.textContent = on ? "Turning on…" : "Turning off…"; st.style.color = "#9ba3af";
   const r = await fetch("/api/plug/" + (on ? "on" : "off"), { method: "POST" });
   const d = await r.json();
-  if (d.ok) {
-    _setPlugPill(d.state);
-    st.textContent = "";
-  } else {
-    st.textContent = "Error: " + d.error;
-    st.style.color = "#ef4444";
-  }
+  if (d.ok) { _setPlugPill(d.state); st.textContent = ""; }
+  else { st.textContent = "Error: " + d.error; st.style.color = "#ef4444"; }
 }
 
 fetch("/api/plug/status").then(r => r.json()).then(d => _setPlugPill(d.on));
@@ -268,181 +274,14 @@ async function logStart() {
   const r = await fetch("/api/log/start", { method: "POST" });
   const d = await r.json();
   const el = document.getElementById("logStatus");
-  if (d.ok) {
-    el.textContent = "Logging → " + d.file;
-    el.style.color = "#10b981";
-  } else {
-    el.textContent = d.error;
-    el.style.color = "#ef4444";
-  }
+  if (d.ok) { el.textContent = "Logging → " + d.file; el.style.color = "#10b981"; }
+  else { el.textContent = d.error; el.style.color = "#ef4444"; }
 }
 
 async function logStop() {
   await fetch("/api/log/stop", { method: "POST" });
   const el = document.getElementById("logStatus");
-  el.textContent = "Stopped";
-  el.style.color = "#6b7280";
-}
-
-// ── Cycle Timer ───────────────────────────────────────────────────────────────
-let _cycleTimer = null;
-let _cyclePhase = null;     // 'humid' | 'drier'
-let _cyclePaused = false;
-let _cycleSecondsLeft = 0;
-let _cycleTotalSeconds = 0;
-let _humidSec = 0;
-let _drierSec = 0;
-let _cycleCount = 0;
-let _targetCycles = 0;
-
-const _cycleInputIds = ['humidDur', 'drierDur', 'targetCycles'];
-
-function _lockInputs(locked) {
-  _cycleInputIds.forEach(id => {
-    const el = document.getElementById(id);
-    el.disabled = locked;
-    el.style.opacity = locked ? '0.4' : '1';
-    el.style.cursor  = locked ? 'not-allowed' : '';
-  });
-}
-
-// state: 'stopped' | 'running' | 'paused'
-function _setButtons(state) {
-  const btnStart = document.getElementById('btnStart');
-  const btnPause = document.getElementById('btnPause');
-  const btnStop  = document.getElementById('btnStop');
-  btnStart.disabled = state === 'running';
-  btnPause.disabled = state === 'stopped';
-  btnPause.textContent = state === 'paused' ? 'Resume' : 'Pause';
-  btnStop.disabled  = state === 'stopped';
-}
-
-function cycleStart() {
-  // hard-stop any existing run without touching button/input state yet
-  if (_cycleTimer) { clearInterval(_cycleTimer); _cycleTimer = null; }
-  _cyclePaused = false;
-  setSolenoid('humidity', false);
-  setSolenoid('drier', false);
-
-  _humidSec     = (parseInt(document.getElementById('humidDur').value)    || 20) * 60;
-  _drierSec     = (parseInt(document.getElementById('drierDur').value)    || 40) * 60;
-  _targetCycles =  parseInt(document.getElementById('targetCycles').value) || 0;
-  _cycleCount   = 0;
-
-  _lockInputs(true);
-  _setButtons('running');
-  _startPhase('humid');
-}
-
-function _startPhase(phase) {
-  _cyclePhase = phase;
-  if (phase === 'humid') {
-    setSolenoid('drier', false);
-    setSolenoid('humidity', true);
-    _cycleSecondsLeft = _humidSec;
-  } else {
-    setSolenoid('humidity', false);
-    setSolenoid('drier', true);
-    _cycleSecondsLeft = _drierSec;
-  }
-  _cycleTotalSeconds = _cycleSecondsLeft;
-  document.getElementById('cycleCountdown').style.display = '';
-  _updateCycleUI();
-  _cycleTimer = setInterval(_cycleTick, 1000);
-}
-
-function _cycleTick() {
-  _cycleSecondsLeft--;
-  if (_cycleSecondsLeft <= 0) {
-    clearInterval(_cycleTimer);
-    if (_cyclePhase === 'drier') {
-      _cycleCount++;
-      if (_targetCycles > 0 && _cycleCount >= _targetCycles) {
-        _finishCycle();
-        return;
-      }
-    }
-    _startPhase(_cyclePhase === 'humid' ? 'drier' : 'humid');
-    return;
-  }
-  _updateCycleUI();
-}
-
-function _updateCycleUI() {
-  const mins = String(Math.floor(_cycleSecondsLeft / 60)).padStart(2, '0');
-  const secs = String(_cycleSecondsLeft % 60).padStart(2, '0');
-  document.getElementById('cycleTimeLeft').textContent = mins + ':' + secs;
-
-  const isHumid = _cyclePhase === 'humid';
-  const color = isHumid ? '#3b82f6' : '#f59e0b';
-  const label = isHumid ? 'HUMIDITY AIR' : 'DRY AIR';
-  const pill = document.getElementById('cyclePhasePill');
-  pill.className = 'status-pill ' + (_cyclePaused ? 'off' : 'on');
-  pill.innerHTML = `<span class="dot" style="background:${_cyclePaused ? '#4b5563' : color}"></span> ${label}${_cyclePaused ? ' (PAUSED)' : ''}`;
-
-  const pct = (_cycleSecondsLeft / _cycleTotalSeconds) * 100;
-  const bar = document.getElementById('cycleBar');
-  bar.style.width = pct + '%';
-  bar.style.background = _cyclePaused ? '#4b5563' : color;
-
-  const target = _targetCycles > 0 ? ` / ${_targetCycles}` : ' / ∞';
-  document.getElementById('cycleCntBadge').textContent = `Cycle ${_cycleCount + 1}${target}`;
-
-  const st = document.getElementById('cycleStatus');
-  if (_cyclePaused) {
-    st.textContent = 'Paused — edit durations then Resume or Start';
-    st.style.color = '#f59e0b';
-  } else {
-    st.textContent = isHumid ? 'Humidity phase active' : 'Dry air phase active';
-    st.style.color = '#10b981';
-  }
-}
-
-function cyclePauseResume() {
-  if (!_cyclePhase) return;
-  if (!_cyclePaused) {
-    // pause
-    clearInterval(_cycleTimer);
-    _cyclePaused = true;
-    _lockInputs(false);
-    _setButtons('paused');
-    _updateCycleUI();
-  } else {
-    // resume
-    _cyclePaused = false;
-    _lockInputs(true);
-    _setButtons('running');
-    _updateCycleUI();
-    _cycleTimer = setInterval(_cycleTick, 1000);
-  }
-}
-
-function _finishCycle() {
-  if (_cycleTimer) { clearInterval(_cycleTimer); _cycleTimer = null; }
-  _cyclePhase = null;
-  _cyclePaused = false;
-  setSolenoid('humidity', false);
-  setSolenoid('drier', false);
-  _lockInputs(false);
-  _setButtons('stopped');
-  document.getElementById('cycleCntBadge').textContent = `${_cycleCount} cycle${_cycleCount !== 1 ? 's' : ''} complete`;
-  const st = document.getElementById('cycleStatus');
-  st.textContent = `Done — ${_cycleCount} cycle${_cycleCount !== 1 ? 's' : ''} completed`;
-  st.style.color = '#10b981';
-}
-
-function cycleStop() {
-  if (_cycleTimer) { clearInterval(_cycleTimer); _cycleTimer = null; }
-  _cyclePhase = null;
-  _cyclePaused = false;
-  setSolenoid('humidity', false);
-  setSolenoid('drier', false);
-  _lockInputs(false);
-  _setButtons('stopped');
-  document.getElementById('cycleCountdown').style.display = 'none';
-  const st = document.getElementById('cycleStatus');
-  st.textContent = _cycleCount > 0 ? `Stopped after ${_cycleCount} cycle${_cycleCount !== 1 ? 's' : ''}` : 'Stopped';
-  st.style.color = '#6b7280';
+  el.textContent = "Stopped"; el.style.color = "#6b7280";
 }
 </script>
 </body>

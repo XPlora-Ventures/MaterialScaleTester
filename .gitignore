@@ -15,6 +15,9 @@ lib/README
 # Data logs
 *.csv
 
+# WiFi credentials and server config
+src/wifi_config.h
+
 # Tuya device credentials (contain local keys)
 devices.json
 snapshot.json
