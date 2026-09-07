@@ -3,6 +3,7 @@ import logging
 import tinytuya
 
 log = logging.getLogger(__name__)
+logging.getLogger('tinytuya').setLevel(logging.DEBUG)
 
 _REGION    = os.environ.get("TUYA_REGION", "")
 _KEY       = os.environ.get("TUYA_API_KEY", "")
@@ -17,7 +18,7 @@ class PlugController:
                 apiRegion=_REGION,
                 apiKey=_KEY,
                 apiSecret=_SECRET,
-                new_sign_algorithm=True,
+                new_sign_algorithm=False,
             )
         except TypeError:
             return tinytuya.Cloud(
