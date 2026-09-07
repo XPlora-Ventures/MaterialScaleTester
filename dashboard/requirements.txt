@@ -2,5 +2,4 @@ flask>=3.0
 flask-socketio>=5.3
 flask-sock>=0.7
 tinytuya>=1.15
-gunicorn>=21.0
 eventlet>=0.35
