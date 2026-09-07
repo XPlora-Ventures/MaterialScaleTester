@@ -1,10 +1,10 @@
 import os
 import tinytuya
 
-_REGION    = os.environ["TUYA_REGION"]     # e.g. "us", "eu", "cn", "in"
-_KEY       = os.environ["TUYA_API_KEY"]
-_SECRET    = os.environ["TUYA_API_SECRET"]
-_DEVICE_ID = os.environ["TUYA_DEVICE_ID"]
+_REGION    = os.environ.get("TUYA_REGION", "")
+_KEY       = os.environ.get("TUYA_API_KEY", "")
+_SECRET    = os.environ.get("TUYA_API_SECRET", "")
+_DEVICE_ID = os.environ.get("TUYA_DEVICE_ID", "")
 
 
 class PlugController:
