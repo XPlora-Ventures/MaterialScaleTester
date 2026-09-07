@@ -22,7 +22,7 @@ class PlugController:
         if not all([_REGION, _KEY, _SECRET, _DEVICE_ID]):
             raise RuntimeError("Tuya env vars not set (TUYA_REGION, TUYA_API_KEY, TUYA_API_SECRET, TUYA_DEVICE_ID)")
         result = self._cloud().sendcommand(_DEVICE_ID, [{"code": "switch_1", "value": value}])
-        log.info("plug sendcommand result: %s", result)
+        print(f"[PLUG] sendcommand({'on' if value else 'off'}) -> {result}", flush=True)
         if isinstance(result, dict) and result.get("success") is False:
             raise RuntimeError(result.get("msg") or str(result))
 
