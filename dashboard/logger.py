@@ -23,7 +23,8 @@ class CsvLogger:
             self._file = open(self._path, "w", newline="")
             self._writer = csv.writer(self._file)
             self._writer.writerow([
-                "timestamp", "rtd_t", "heater_l", "heater_r", "setpoint",
+                "timestamp", "state", "solenoid_humid", "solenoid_drier",
+                "cycles", "target", "time_left_ms",
             ])
         return True, self._path
 
@@ -39,9 +40,11 @@ class CsvLogger:
                 return
             self._writer.writerow([
                 datetime.datetime.now().isoformat(),
-                data.get("rtd", ""),
-                int(data.get("heater_l", False)),
-                int(data.get("heater_r", False)),
-                data.get("setpoint", ""),
+                data.get("state", ""),
+                int(data.get("solenoid_humid", False)),
+                int(data.get("solenoid_drier", False)),
+                data.get("cycles", ""),
+                data.get("target", ""),
+                data.get("time_left_ms", ""),
             ])
             self._file.flush()
