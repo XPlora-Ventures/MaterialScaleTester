@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include <Wire.h>
 #include <SPI.h>
+#include <SD.h>
 #include <WiFi.h>
 #include <WebSocketsClient.h>
 #include <ArduinoJson.h>
@@ -325,6 +326,65 @@ static void wsEvent(WStype_t type, uint8_t *payload, size_t length) {
 }
 
 // =============================================================================
+// SD Card CSV Logger
+// =============================================================================
+
+static File g_log_file;
+static bool g_sd_ready = false;
+
+static void sdInit() {
+    if (digitalRead(SD_DETECT) == HIGH) {
+        Serial.println("[SD] no card — skipping");
+        return;
+    }
+    if (!SD.begin(SD_CS)) {
+        Serial.println("[SD] mount failed");
+        return;
+    }
+    uint32_t boot = prefs.getULong("bootcnt", 0) + 1;
+    prefs.putULong("bootcnt", boot);
+
+    char fname[24];
+    snprintf(fname, sizeof(fname), "/mst_%05lu.csv", (unsigned long)boot);
+    g_log_file = SD.open(fname, FILE_WRITE);
+    if (!g_log_file) {
+        Serial.printf("[SD] open %s failed\n", fname);
+        return;
+    }
+    g_log_file.println(
+        "millis,state,solenoid_humid,solenoid_drier,"
+        "cycles,target,time_left_ms,temp_c,thermal"
+    );
+    g_log_file.flush();
+    g_sd_ready = true;
+    digitalWrite(LED_SD, HIGH);
+    Serial.printf("[SD] logging to %s\n", fname);
+}
+
+static void sdLogRow() {
+    if (!g_sd_ready) return;
+    size_t written = g_log_file.printf(
+        "%lu,%s,%d,%d,%lu,%lu,%lu,%.2f,%s\n",
+        millis(),
+        cycleStateName(),
+        (int)g_solenoid_humid,
+        (int)g_solenoid_drier,
+        (unsigned long)g_cycle_count,
+        (unsigned long)g_target_cycles,
+        (unsigned long)cycleTimeLeftMs(),
+        g_pt1000_temp_c,
+        thermalStateName()
+    );
+    if (written == 0) {
+        g_sd_ready = false;
+        digitalWrite(LED_SD, LOW);
+        Serial.println("[SD] write failed — logging stopped");
+    } else {
+        g_log_file.flush();
+    }
+}
+
+// =============================================================================
 // WiFi
 // =============================================================================
 
@@ -360,6 +420,7 @@ void setup() {
     g_rtd.begin(MAX31865_2WIRE); // change to MAX31865_3WIRE / 4WIRE if your board uses those
     Serial.println("[PT1000] MAX31865 initialized");
 
+    pinMode(SD_DETECT, INPUT);  // hardware pull-up on board
     pinMode(LED_HB,   OUTPUT);
     pinMode(LED_SD,   OUTPUT); digitalWrite(LED_SD,   LOW);
     pinMode(LED_WIFI, OUTPUT); digitalWrite(LED_WIFI, LOW);
@@ -372,6 +433,8 @@ void setup() {
     prefs.begin("mst", false);
     g_cycle_count = prefs.getULong("cycles", 0);
     Serial.printf("[NVS] cycle count = %lu\n", g_cycle_count);
+
+    sdInit();
 
     Serial.printf("[WiFi] connecting to %s ...\n", WIFI_SSID);
     wifiConnect();
@@ -416,5 +479,6 @@ void loop() {
         lastTelemetry = now;
         digitalWrite(LED_HB, !digitalRead(LED_HB));
         emitTelemetry();
+        sdLogRow();
     }
 }
