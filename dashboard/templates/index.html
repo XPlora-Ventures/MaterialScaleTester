@@ -142,16 +142,6 @@
     </div>
   </div>
 
-  <!-- Logging -->
-  <div class="card" style="margin-bottom:16px">
-    <h3>Logging</h3>
-    <div class="row">
-      <button class="btn"       onclick="logStart()">Start Log</button>
-      <button class="btn ghost" onclick="logStop()">Stop</button>
-      <button class="btn ghost" onclick="window.open('/api/log/download')">Download CSV</button>
-      <span id="logStatus" style="font-size:0.8rem;color:#6b7280;margin-left:8px"></span>
-    </div>
-  </div>
 
 </div>
 
@@ -269,20 +259,6 @@ async function plugSet(on) {
 
 fetch("/api/plug/status").then(r => r.json()).then(d => _setPlugPill(d.on));
 
-// ── Logging ───────────────────────────────────────────────────────────────────
-async function logStart() {
-  const r = await fetch("/api/log/start", { method: "POST" });
-  const d = await r.json();
-  const el = document.getElementById("logStatus");
-  if (d.ok) { el.textContent = "Logging → " + d.file; el.style.color = "#10b981"; }
-  else { el.textContent = d.error; el.style.color = "#ef4444"; }
-}
-
-async function logStop() {
-  await fetch("/api/log/stop", { method: "POST" });
-  const el = document.getElementById("logStatus");
-  el.textContent = "Stopped"; el.style.color = "#6b7280";
-}
 </script>
 </body>
 </html>
