@@ -1,5 +1,5 @@
 flask>=3.0
 flask-socketio>=5.3
 flask-sock>=0.7
-tinytuya>=1.15
+tinytuya==1.15.0
 eventlet>=0.35
