@@ -28,7 +28,7 @@
 
 // Hardware SPI — only CS pin passed; SPI bus started in setup()
 // Change MAX31865_2WIRE to 3WIRE or 4WIRE to match your board wiring
-static Adafruit_MAX31865 g_rtd(PT1000_B1_CH1_CS);
+static Adafruit_MAX31865 g_rtd(PT1000_B1_CH2_CS);
 
 enum class ThermalState { OK, FAULT, ALERT };
 static ThermalState g_thermal_state  = ThermalState::OK;
