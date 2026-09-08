@@ -161,6 +161,18 @@
     </div>
   </div>
 
+  <!-- SD Card Explorer -->
+  <div class="card" style="margin-bottom:16px">
+    <h3>SD Card — File Explorer</h3>
+    <div class="row">
+      <button class="btn ghost" onclick="sdRefresh()">Refresh</button>
+      <span id="sdStatus" style="font-size:0.8rem;color:#6b7280;margin-left:8px"></span>
+    </div>
+    <div id="sdFileList" style="margin-top:12px;font-size:0.85rem;color:#6b7280">
+      Press Refresh to list files.
+    </div>
+  </div>
+
   <!-- Wall Plug -->
   <div class="card" style="margin-bottom:16px">
     <h3>Wall Plug — Brilliant 21884</h3>
@@ -315,6 +327,45 @@ function _showAlert(msg, color) {
   el.style.display = "block";
   clearTimeout(_alertTimer);
   _alertTimer = setTimeout(() => { el.style.display = "none"; }, 10000);
+}
+
+// ── SD Card Explorer ──────────────────────────────────────────────────────────
+async function sdRefresh() {
+  const status = document.getElementById("sdStatus");
+  const list   = document.getElementById("sdFileList");
+  status.textContent = "Loading…";
+  list.innerHTML = "";
+  try {
+    const r = await fetch("/api/sd/files");
+    const data = await r.json();
+    status.textContent = "";
+    if (!r.ok || data.error) {
+      list.innerHTML = `<span style="color:#ef4444">${data.error || "Error"}</span>`;
+      return;
+    }
+    if (!data.length) {
+      list.innerHTML = '<span style="color:#6b7280">No files on SD card.</span>';
+      return;
+    }
+    list.innerHTML = data.map(f => `
+      <div class="row" style="border-top:1px solid #2a2d3a;padding-top:10px;margin-top:2px">
+        <span style="flex:1;font-family:monospace">${f.name}</span>
+        <span style="color:#9ba3af;min-width:72px;text-align:right;margin-right:12px">${_fmtBytes(f.size)}</span>
+        <a href="/api/sd/download/${encodeURIComponent(f.name)}"
+           class="btn ghost" style="font-size:0.78rem;padding:5px 12px;text-decoration:none">
+          Download
+        </a>
+      </div>`).join("");
+  } catch (e) {
+    status.textContent = "";
+    list.innerHTML = `<span style="color:#ef4444">Request failed</span>`;
+  }
+}
+
+function _fmtBytes(b) {
+  if (b < 1024)     return b + " B";
+  if (b < 1048576)  return (b / 1024).toFixed(1) + " KB";
+  return (b / 1048576).toFixed(1) + " MB";
 }
 
 // ── Wall Plug ─────────────────────────────────────────────────────────────────

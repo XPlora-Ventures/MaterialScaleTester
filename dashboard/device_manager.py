@@ -1,6 +1,7 @@
 """Manages the persistent WebSocket connection from the ESP32."""
 
 import json
+import queue
 import threading
 
 
@@ -10,6 +11,7 @@ class DeviceManager:
         self._lock = threading.Lock()
         self._listeners = []
         self._last_telemetry = {}
+        self._sd_queue = None    # set during an SD file transfer
 
     def add_listener(self, cb):
         self._listeners.append(cb)
@@ -31,6 +33,17 @@ class DeviceManager:
     def last_telemetry(self) -> dict:
         return self._last_telemetry
 
+    def start_sd_transfer(self) -> "queue.Queue | None":
+        with self._lock:
+            if self._sd_queue is not None:
+                return None  # already in use
+            self._sd_queue = queue.Queue()
+            return self._sd_queue
+
+    def end_sd_transfer(self):
+        with self._lock:
+            self._sd_queue = None
+
     def send(self, obj: dict):
         with self._lock:
             ws = self._ws
@@ -46,7 +59,13 @@ class DeviceManager:
             msg = json.loads(data)
         except json.JSONDecodeError:
             return
-        if "type" not in msg:   # only persist regular telemetry, not typed events
+        msg_type = msg.get("type")
+        if msg_type in ("sd_files", "sd_chunk"):
+            with self._lock:
+                if self._sd_queue is not None:
+                    self._sd_queue.put(msg)
+            return
+        if msg_type is None:    # only persist regular telemetry, not typed events
             self._last_telemetry = msg
         for cb in self._listeners:
             try:

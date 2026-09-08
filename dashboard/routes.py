@@ -1,6 +1,7 @@
 import os
+import queue
 
-from flask import Blueprint, request, jsonify, send_file
+from flask import Blueprint, request, jsonify, send_file, Response, stream_with_context
 
 from device_manager import DeviceManager
 from logger import CsvLogger
@@ -68,5 +69,50 @@ def create_blueprint(device_mgr: DeviceManager, csv_logger: CsvLogger, plug: Plu
             return jsonify({"ok": True, "devices": result})
         except Exception as e:
             return jsonify({"ok": False, "error": str(e)})
+
+    @bp.route("/api/sd/files")
+    def api_sd_files():
+        q = device_mgr.start_sd_transfer()
+        if q is None:
+            return jsonify({"error": "SD transfer already in progress"}), 503
+        try:
+            device_mgr.send({"cmd": "list_files"})
+            msg = q.get(timeout=8)
+            if "error" in msg:
+                return jsonify({"error": msg["error"]}), 502
+            return jsonify(msg.get("files", []))
+        except queue.Empty:
+            return jsonify({"error": "device timeout"}), 504
+        finally:
+            device_mgr.end_sd_transfer()
+
+    @bp.route("/api/sd/download/<path:filename>")
+    def api_sd_download(filename):
+        q = device_mgr.start_sd_transfer()
+        if q is None:
+            return jsonify({"error": "SD transfer already in progress"}), 503
+        device_mgr.send({"cmd": "read_file", "name": "/" + filename})
+
+        @stream_with_context
+        def generate():
+            try:
+                while True:
+                    try:
+                        chunk = q.get(timeout=10)
+                        if "error" in chunk:
+                            break
+                        yield chunk.get("data", "")
+                        if chunk.get("done"):
+                            break
+                    except queue.Empty:
+                        break
+            finally:
+                device_mgr.end_sd_transfer()
+
+        return Response(
+            generate(),
+            mimetype="text/csv",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
 
     return bp

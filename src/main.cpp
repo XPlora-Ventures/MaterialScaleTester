@@ -248,6 +248,10 @@ static const char* cycleStateName() {
     return "idle";
 }
 
+// SD forward declarations (defined in SD Card section below)
+static void sdHandleListFiles();
+static void sdHandleReadFile(const char *name);
+
 // =============================================================================
 // WebSocket
 // =============================================================================
@@ -301,6 +305,11 @@ static void handleCommand(const char *payload) {
             setPlug(true);
             Serial.println("[THERMAL] fault reset by operator — plug ON");
         }
+    }
+    else if (strcmp(cmd, "list_files") == 0) { sdHandleListFiles(); }
+    else if (strcmp(cmd, "read_file")  == 0) {
+        const char *name = doc["name"];
+        if (name) sdHandleReadFile(name);
     }
 }
 
@@ -359,6 +368,62 @@ static void sdInit() {
     g_sd_ready = true;
     digitalWrite(LED_SD, HIGH);
     Serial.printf("[SD] logging to %s\n", fname);
+}
+
+static void sdHandleListFiles() {
+    if (!g_sd_ready) {
+        JsonDocument doc;
+        doc["type"]  = "sd_files";
+        doc["error"] = "SD not ready";
+        wsSend(doc);
+        return;
+    }
+    JsonDocument doc;
+    doc["type"] = "sd_files";
+    JsonArray arr = doc["files"].to<JsonArray>();
+    File root = SD.open("/");
+    while (true) {
+        File entry = root.openNextFile();
+        if (!entry) break;
+        if (!entry.isDirectory()) {
+            JsonObject f = arr.add<JsonObject>();
+            f["name"] = entry.name();
+            f["size"] = (uint32_t)entry.size();
+        }
+        entry.close();
+    }
+    root.close();
+    wsSend(doc);
+}
+
+static void sdHandleReadFile(const char *name) {
+    // Ensure path starts with '/'
+    char path[64];
+    if (name[0] == '/') snprintf(path, sizeof(path), "%s", name);
+    else                snprintf(path, sizeof(path), "/%s", name);
+
+    File f = SD.open(path);
+    if (!f) {
+        JsonDocument doc;
+        doc["type"]  = "sd_chunk";
+        doc["error"] = "file not found";
+        doc["done"]  = true;
+        wsSend(doc);
+        return;
+    }
+
+    static char buf[512];
+    while (f.available()) {
+        size_t n   = f.readBytes(buf, sizeof(buf) - 1);
+        buf[n]     = '\0';
+        bool done  = !f.available();
+        JsonDocument doc;
+        doc["type"] = "sd_chunk";
+        doc["data"] = buf;
+        doc["done"] = done;
+        wsSend(doc);
+    }
+    f.close();
 }
 
 static void sdLogRow() {
