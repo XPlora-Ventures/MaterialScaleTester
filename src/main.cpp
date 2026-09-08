@@ -19,7 +19,7 @@
 // =============================================================================
 
 #define PT1000_RNOM          1000.0f
-#define PT1000_RREF          4300.0f   // reference resistor on MAX31865 board
+#define PT1000_RREF          4000.0f   // reference resistor on MAX31865 board
 
 // Thermal cutout thresholds
 #define THERMAL_CUTOFF_C     300.0f
@@ -37,15 +37,18 @@ static float        g_pt1000_temp_c  = 0.0f;
 static bool         g_rtd_fault      = false;
 
 static void readPT1000() {
+    // Always read temperature — valid even when 0x08 (RTDINLOW) is set
+    g_pt1000_temp_c = g_rtd.temperature(PT1000_RNOM, PT1000_RREF);
     uint8_t fault = g_rtd.readFault();
     if (fault) {
-        g_rtd_fault = true;
         g_rtd.clearFault();
-        Serial.printf("[PT1000] fault register: 0x%02X\n", fault);
-        return;
+        // 0x08 (RTDINLOW) is a known false positive in 2-wire mode — ignore it
+        uint8_t serious = fault & ~0x08u;
+        g_rtd_fault = serious != 0;
+        if (serious) Serial.printf("[PT1000] fault: 0x%02X\n", serious);
+    } else {
+        g_rtd_fault = false;
     }
-    g_rtd_fault     = false;
-    g_pt1000_temp_c = g_rtd.temperature(PT1000_RNOM, PT1000_RREF);
 }
 
 static const char* thermalStateName() {
