@@ -27,7 +27,6 @@
 #define THERMAL_ALERT_MS     (10UL * 60000UL)
 
 // Hardware SPI — only CS pin passed; SPI bus started in setup()
-// Change MAX31865_2WIRE to 3WIRE or 4WIRE to match your board wiring
 static Adafruit_MAX31865 g_rtd(PT1000_B1_CH2_CS);
 
 enum class ThermalState { OK, FAULT, ALERT };
@@ -485,7 +484,13 @@ void setup() {
     Wire.setClock(400000);
 
     SPI.begin(SPI_SCK, SPI_MISO, SPI_MOSI);
-    g_rtd.begin(MAX31865_2WIRE); // change to MAX31865_3WIRE / 4WIRE if your board uses those
+
+    // Deselect all PT1000 CS pins before begin() — prevents bus contention
+    for (uint8_t cs : {PT1000_B1_CH1_CS, PT1000_B1_CH2_CS, PT1000_B2_CH1_CS, PT1000_B2_CH2_CS}) {
+        pinMode(cs, OUTPUT);
+        digitalWrite(cs, HIGH);
+    }
+    g_rtd.begin(MAX31865_2WIRE);
     Serial.println("[PT1000] MAX31865 initialized");
 
     pinMode(SD_DETECT, INPUT);  // hardware pull-up on board
