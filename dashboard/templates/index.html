@@ -60,6 +60,23 @@
   .sensor-val { font-size: 2.4rem; font-weight: 700; color: #f3f4f6; line-height: 1; font-variant-numeric: tabular-nums; }
   .sensor-sub { font-size: 0.85rem; color: #9ba3af; margin-top: 6px; }
 
+  .phase-matrix { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+  .phase-matrix th {
+    text-align: left; color: #6b7280; font-size: 0.75rem;
+    text-transform: uppercase; letter-spacing: 0.05em;
+    padding: 0 12px 10px 0; white-space: nowrap;
+  }
+  .phase-matrix td { padding: 8px 12px 8px 0; border-top: 1px solid #2a2d3a; vertical-align: middle; }
+  .phase-matrix .phase-name { font-weight: 500; color: #e0e0e0; min-width: 90px; }
+  .phase-matrix .check-cell { text-align: center; padding-right: 0; }
+  .phase-matrix input[type=checkbox] { width: 16px; height: 16px; cursor: pointer; accent-color: #3b82f6; }
+  .phase-matrix .dur-input {
+    background: #252836; border: 1px solid #3a3d4a; border-radius: 6px;
+    color: #e0e0e0; padding: 5px 8px; font-size: 0.85rem; width: 62px;
+  }
+  .phase-matrix .dur-input:focus { outline: none; border-color: #3b82f6; }
+  .phase-matrix .unit { font-size: 0.82rem; color: #9ba3af; }
+
   .alert-banner {
     position: fixed; top: 58px; left: 50%; transform: translateX(-50%);
     background: #1a1d27; border: 1px solid #3a3d4a; border-left-width: 4px;
@@ -88,7 +105,7 @@
   <!-- Solenoids -->
   <div class="grid grid-2" style="margin-bottom:16px">
     <div class="card">
-      <h3>Humidity Solenoid — CH1</h3>
+      <h3>Humidity Solenoid — CH0</h3>
       <div class="row">
         <span id="humidPill" class="status-pill off"><span class="dot"></span> CLOSED</span>
         <button class="btn"       onclick="sendCmd({cmd:'set_humidity',val:true})">Open</button>
@@ -96,7 +113,7 @@
       </div>
     </div>
     <div class="card">
-      <h3>Drier Solenoid — CH0</h3>
+      <h3>Drier Solenoid — CH1</h3>
       <div class="row">
         <span id="drierPill" class="status-pill off"><span class="dot"></span> CLOSED</span>
         <button class="btn"       onclick="sendCmd({cmd:'set_drier',val:true})">Open</button>
@@ -105,18 +122,55 @@
     </div>
   </div>
 
-  <!-- Cycle Timer -->
+  <!-- Phase / Peripheral Matrix -->
   <div class="card" style="margin-bottom:16px">
-    <h3>Valve Cycle Timer</h3>
-    <div class="row">
-      <label>Humidity duration</label>
-      <input type="number" id="humidDur" value="20" min="1" max="999" style="max-width:80px">
-      <span style="font-size:0.85rem;color:#9ba3af">min</span>
+    <h3>Cycle Configuration</h3>
+    <div style="overflow-x:auto">
+      <table class="phase-matrix">
+        <thead>
+          <tr>
+            <th>Phase</th>
+            <th>Duration</th>
+            <th style="text-align:center">Dry</th>
+            <th style="text-align:center">RH</th>
+            <th style="text-align:center">Hot Plate</th>
+            <th style="text-align:center">Water Pump</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="phase-name">Discharge</td>
+            <td><input type="number" id="humidDur" class="dur-input" value="13" min="1" max="999" oninput="_updateTotalTime()"> <span class="unit">min</span></td>
+            <td class="check-cell"><input type="checkbox" id="cfg_0_dry"       onchange="_matrixDirty()"></td>
+            <td class="check-cell"><input type="checkbox" id="cfg_0_rh"        onchange="_matrixDirty()" checked></td>
+            <td class="check-cell"><input type="checkbox" id="cfg_0_hot_plate" onchange="_matrixDirty()"></td>
+            <td class="check-cell"><input type="checkbox" id="cfg_0_pump"      onchange="_matrixDirty()" checked></td>
+          </tr>
+          <tr>
+            <td class="phase-name">Heating</td>
+            <td><input type="number" id="regenDur" class="dur-input" value="14" min="1" max="999" oninput="_updateTotalTime()"> <span class="unit">min</span></td>
+            <td class="check-cell"><input type="checkbox" id="cfg_1_dry"       onchange="_matrixDirty()" checked></td>
+            <td class="check-cell"><input type="checkbox" id="cfg_1_rh"        onchange="_matrixDirty()"></td>
+            <td class="check-cell"><input type="checkbox" id="cfg_1_hot_plate" onchange="_matrixDirty()" checked></td>
+            <td class="check-cell"><input type="checkbox" id="cfg_1_pump"      onchange="_matrixDirty()"></td>
+          </tr>
+          <tr>
+            <td class="phase-name">Cooling</td>
+            <td><input type="number" id="cooldownDur" class="dur-input" value="32" min="1" max="999" oninput="_updateTotalTime()"> <span class="unit">min</span></td>
+            <td class="check-cell"><input type="checkbox" id="cfg_2_dry"       onchange="_matrixDirty()" checked></td>
+            <td class="check-cell"><input type="checkbox" id="cfg_2_rh"        onchange="_matrixDirty()"></td>
+            <td class="check-cell"><input type="checkbox" id="cfg_2_hot_plate" onchange="_matrixDirty()"></td>
+            <td class="check-cell"><input type="checkbox" id="cfg_2_pump"      onchange="_matrixDirty()" checked></td>
+          </tr>
+        </tbody>
+      </table>
     </div>
-    <div class="row">
-      <label>Dry air duration</label>
-      <input type="number" id="drierDur" value="40" min="1" max="999" style="max-width:80px">
-      <span style="font-size:0.85rem;color:#9ba3af">min</span>
+
+    <div class="row" style="margin-top:14px;align-items:center">
+      <span style="font-size:0.78rem;color:#6b7280">Total per cycle</span>
+      <span id="totalCycleTime" style="font-size:0.85rem;color:#9ba3af;font-variant-numeric:tabular-nums;margin-left:6px">59 min</span>
+      <button id="btnApplyMatrix" class="btn ghost" style="margin-left:auto" onclick="applyPhaseMatrix()">Apply Config</button>
+      <span id="applyStatus" style="font-size:0.78rem;color:#10b981;margin-left:8px;display:none">&#10003; Applied</span>
     </div>
     <div class="row">
       <label>Target cycles</label>
@@ -144,7 +198,7 @@
 
   <!-- Temperature / Thermal Cutout -->
   <div class="card" style="margin-bottom:16px">
-    <h3>Temperature — PT1000 B1·CH1</h3>
+    <h3>Temperature — PT1000 B1·CH2</h3>
     <div style="display:flex;align-items:flex-end;gap:20px;flex-wrap:wrap">
       <div>
         <div class="sensor-val">
@@ -204,6 +258,7 @@ socket.on("telemetry", d => {
 
   _updateCycleUI(d);
   _updateThermalUI(d);
+  _updateMatrixUI(d);
 });
 
 // Seed state from server on page load
@@ -212,6 +267,7 @@ fetch("/api/status").then(r => r.json()).then(d => {
   if (d.telemetry && Object.keys(d.telemetry).length) {
     _updateCycleUI(d.telemetry);
     _updateThermalUI(d.telemetry);
+    _updateMatrixUI(d.telemetry);
   }
 });
 
@@ -226,11 +282,16 @@ socket.on("plug_state", d => { _setPlugPill(d.on); });
 
 // ── Cycle UI (display only — logic runs on ESP32) ─────────────────────────────
 let _lastState = "idle";
-let _phaseTotalMs = 0;
+
+const _phaseInfo = {
+  humid:    { color: "#3b82f6", label: "HUMIDITY" },
+  regen:    { color: "#f59e0b", label: "REGEN" },
+  cooldown: { color: "#06b6d4", label: "COOLDOWN" },
+};
 
 function _updateCycleUI(d) {
-  const state = d.state || "idle";
-  const running = state === "humid" || state === "drier";
+  const state   = d.state || "idle";
+  const running = state === "humid" || state === "regen" || state === "cooldown";
   const paused  = state === "paused";
   const active  = running || paused;
 
@@ -243,7 +304,11 @@ function _updateCycleUI(d) {
   document.getElementById("btnStop").disabled  = !active;
 
   // lock inputs while running
-  ["humidDur","drierDur","targetCycles"].forEach(id => {
+  ["humidDur","regenDur","cooldownDur","targetCycles",
+   "cfg_0_dry","cfg_0_rh","cfg_0_hot_plate","cfg_0_pump",
+   "cfg_1_dry","cfg_1_rh","cfg_1_hot_plate","cfg_1_pump",
+   "cfg_2_dry","cfg_2_rh","cfg_2_hot_plate","cfg_2_pump",
+   "btnApplyMatrix"].forEach(id => {
     document.getElementById(id).disabled = active && !paused;
   });
 
@@ -251,30 +316,38 @@ function _updateCycleUI(d) {
   document.getElementById("cycleCountdown").style.display = active ? "" : "none";
   if (!active) return;
 
-  const isHumid = state === "humid" || (paused && d.paused_from === "humid");
-  const color   = isHumid ? "#3b82f6" : "#f59e0b";
-  const label   = isHumid ? "HUMIDITY AIR" : "DRY AIR";
+  // determine active phase (use paused_from when paused)
+  const phaseName = paused ? (d.paused_from || _lastState || "humid") : state;
+  const phase     = _phaseInfo[phaseName] || _phaseInfo.humid;
+  const color     = paused ? "#4b5563" : phase.color;
 
   const pill = document.getElementById("cyclePhasePill");
   pill.className = "status-pill " + (paused ? "off" : "on");
-  pill.innerHTML = `<span class="dot" style="background:${paused ? "#4b5563" : color}"></span> ${label}${paused ? " (PAUSED)" : ""}`;
+  pill.innerHTML = `<span class="dot" style="background:${color}"></span> ${phase.label}${paused ? " (PAUSED)" : ""}`;
 
   // time left
-  const leftMs   = d.time_left_ms || 0;
-  const mins     = String(Math.floor(leftMs / 60000)).padStart(2, "0");
-  const secs     = String(Math.floor((leftMs % 60000) / 1000)).padStart(2, "0");
+  const leftMs = d.time_left_ms || 0;
+  const mins   = String(Math.floor(leftMs / 60000)).padStart(2, "0");
+  const secs   = String(Math.floor((leftMs % 60000) / 1000)).padStart(2, "0");
   document.getElementById("cycleTimeLeft").textContent = mins + ":" + secs;
 
-  // progress bar
-  const totalMs = isHumid ? (d.humid_ms || 1) : (d.drier_ms || 1);
+  // progress bar — use the phase's own duration
+  const durationMap = { humid: d.humid_ms, regen: d.regen_ms, cooldown: d.cooldown_ms };
+  const totalMs = durationMap[phaseName] || 1;
   const pct     = Math.min(100, (leftMs / totalMs) * 100);
   const bar     = document.getElementById("cycleBar");
   bar.style.width      = pct + "%";
-  bar.style.background = paused ? "#4b5563" : color;
+  bar.style.background = color;
 
-  // cycle count badge
-  const target = d.target > 0 ? ` / ${d.target}` : " / ∞";
-  document.getElementById("cycleCntBadge").textContent = `Cycle ${d.cycles + 1}${target}`;
+  // update total-per-cycle display from live telemetry if available
+  if (d.total_cycle_ms)
+    document.getElementById("totalCycleTime").textContent = Math.round(d.total_cycle_ms / 60000) + " min";
+
+  // cycle count badge + total time
+  const target   = d.target > 0 ? ` / ${d.target}` : " / ∞";
+  const totalMin = d.total_cycle_ms ? Math.round(d.total_cycle_ms / 60000) : "—";
+  document.getElementById("cycleCntBadge").textContent =
+    `Cycle ${(d.cycles ?? 0) + 1}${target} · ${totalMin} min/cycle`;
 }
 
 // ── Commands ──────────────────────────────────────────────────────────────────
@@ -285,11 +358,56 @@ async function sendCmd(obj) {
 function cycleStart() {
   sendCmd({
     cmd: "start",
-    humid_dur:     parseFloat(document.getElementById("humidDur").value)    || 20,
-    drier_dur:     parseFloat(document.getElementById("drierDur").value)    || 40,
+    humid_dur:     parseFloat(document.getElementById("humidDur").value)    || 13,
+    regen_dur:     parseFloat(document.getElementById("regenDur").value)    || 14,
+    cooldown_dur:  parseFloat(document.getElementById("cooldownDur").value) || 32,
     target_cycles: parseInt(document.getElementById("targetCycles").value)  || 0,
   });
 }
+
+function _updateTotalTime() {
+  const h = parseFloat(document.getElementById("humidDur").value)    || 0;
+  const r = parseFloat(document.getElementById("regenDur").value)    || 0;
+  const c = parseFloat(document.getElementById("cooldownDur").value) || 0;
+  document.getElementById("totalCycleTime").textContent = Math.round(h + r + c) + " min";
+}
+
+let _matrixChanged = false;
+function _matrixDirty() {
+  if (_matrixChanged) return;
+  _matrixChanged = true;
+  const btn = document.getElementById("btnApplyMatrix");
+  btn.style.borderColor = "#f59e0b";
+  btn.style.color = "#f59e0b";
+}
+
+async function applyPhaseMatrix() {
+  const phases = [0, 1, 2].map(i => ({
+    dry:       document.getElementById(`cfg_${i}_dry`).checked,
+    rh:        document.getElementById(`cfg_${i}_rh`).checked,
+    hot_plate: document.getElementById(`cfg_${i}_hot_plate`).checked,
+    pump:      document.getElementById(`cfg_${i}_pump`).checked,
+  }));
+  await sendCmd({ cmd: "set_phase_config", phases });
+  _matrixChanged = false;
+  const btn = document.getElementById("btnApplyMatrix");
+  btn.style.borderColor = "";
+  btn.style.color = "";
+  const st = document.getElementById("applyStatus");
+  st.style.display = "";
+  setTimeout(() => { st.style.display = "none"; }, 3000);
+}
+
+function _updateMatrixUI(d) {
+  if (!d.phase_cfg || d.phase_cfg.length !== 3 || _matrixChanged) return;
+  [0, 1, 2].forEach(i => {
+    ["dry", "rh", "hot_plate", "pump"].forEach(k => {
+      const el = document.getElementById(`cfg_${i}_${k}`);
+      if (el) el.checked = !!d.phase_cfg[i][k];
+    });
+  });
+}
+
 function cyclePauseResume() { sendCmd({ cmd: _lastState === "paused" ? "resume" : "pause" }); }
 function cycleStop()        { sendCmd({ cmd: "stop" }); }
 
@@ -374,10 +492,14 @@ function _setPlugPill(on) { _setPill("plugPill", on, on ? "ON" : "OFF"); }
 async function plugSet(on) {
   const st = document.getElementById("plugStatus");
   st.textContent = on ? "Turning on…" : "Turning off…"; st.style.color = "#9ba3af";
-  const r = await fetch("/api/plug/" + (on ? "on" : "off"), { method: "POST" });
-  const d = await r.json();
-  if (d.ok) { _setPlugPill(d.state); st.textContent = ""; }
-  else { st.textContent = "Error: " + d.error; st.style.color = "#ef4444"; }
+  try {
+    const r = await fetch("/api/plug/" + (on ? "on" : "off"), { method: "POST" });
+    const d = await r.json();
+    if (d.ok) { _setPlugPill(d.state); st.textContent = ""; }
+    else { st.textContent = "Error: " + d.error; st.style.color = "#ef4444"; }
+  } catch {
+    st.textContent = "Request failed"; st.style.color = "#ef4444";
+  }
 }
 
 fetch("/api/plug/status").then(r => r.json()).then(d => _setPlugPill(d.on));

@@ -30,10 +30,11 @@
 static Adafruit_MAX31865 g_rtd(PT1000_B1_CH2_CS);
 
 enum class ThermalState { OK, FAULT, ALERT };
-static ThermalState g_thermal_state  = ThermalState::OK;
-static uint32_t     g_fault_start_ms = 0;
-static float        g_pt1000_temp_c  = 0.0f;
-static bool         g_rtd_fault      = false;
+static ThermalState g_thermal_state      = ThermalState::OK;
+static uint32_t     g_fault_start_ms     = 0;
+static float        g_pt1000_temp_c      = 0.0f;
+static bool         g_rtd_fault          = false;
+static uint32_t     g_rtd_fault_since_ms = 0;   // millis() when fault first appeared
 
 static void readPT1000() {
     // Always read temperature — valid even when 0x08 (RTDINLOW) is set
@@ -43,10 +44,13 @@ static void readPT1000() {
         g_rtd.clearFault();
         // 0x08 (RTDINLOW) is a known false positive in 2-wire mode — ignore it
         uint8_t serious = fault & ~0x08u;
-        g_rtd_fault = serious != 0;
+        bool new_fault = serious != 0;
+        if (new_fault && !g_rtd_fault) g_rtd_fault_since_ms = millis();
+        g_rtd_fault = new_fault;
         if (serious) Serial.printf("[PT1000] fault: 0x%02X\n", serious);
     } else {
         g_rtd_fault = false;
+        g_rtd_fault_since_ms = 0;
     }
 }
 
@@ -104,11 +108,10 @@ static void thermalCutoutTick() {
             break;
 
         case ThermalState::FAULT:
-            if (g_rtd_fault || g_pt1000_temp_c < THERMAL_RESET_C) {
+            if (!g_rtd_fault && g_pt1000_temp_c < THERMAL_RESET_C) {
                 // cooled down in time
                 g_thermal_state = ThermalState::OK;
-                setPlug(true);
-                emitThermalEvent("thermal_cleared", "Temperature normalised — plug restored");
+                emitThermalEvent("thermal_cleared", "Temperature normalised — restart cycle to resume");
             } else if (millis() - g_fault_start_ms >= THERMAL_ALERT_MS) {
                 g_thermal_state = ThermalState::ALERT;
                 emitThermalEvent("thermal_alert",
@@ -130,6 +133,7 @@ static uint8_t g_pcf_p0 = 0x00;
 static uint8_t g_pcf_p1 = 0x00;
 static bool    g_solenoid_humid = false;
 static bool    g_solenoid_drier = false;
+static bool    g_solenoid_pump  = false;  // CH2 placeholder — not wired yet
 
 static void pcfFlush() {
     Wire.beginTransmission(PCF8575_ADDR);
@@ -162,35 +166,71 @@ static void cycleCountReset() {
 }
 
 // =============================================================================
+// Phase / Peripheral Config
+// =============================================================================
+
+struct PhaseConfig { bool dry; bool rh; bool hot_plate; bool pump; };
+// Defaults from image: Discharge=RH+Pump, Heating=Dry+HotPlate, Cooling=Dry+Pump
+static PhaseConfig g_phase_cfg[3] = {
+    { false, true,  false, true  },   // 0 = Discharge (HUMID)
+    { true,  false, true,  false },   // 1 = Heating   (REGEN)
+    { true,  false, false, true  },   // 2 = Cooling   (COOLDOWN)
+};
+
+static void phaseCfgSave() {
+    uint16_t bits = 0;
+    for (int i = 0; i < 3; i++) {
+        bits |= (uint16_t)(g_phase_cfg[i].dry       ? 1 : 0) << (i*4 + 0);
+        bits |= (uint16_t)(g_phase_cfg[i].rh        ? 1 : 0) << (i*4 + 1);
+        bits |= (uint16_t)(g_phase_cfg[i].hot_plate ? 1 : 0) << (i*4 + 2);
+        bits |= (uint16_t)(g_phase_cfg[i].pump      ? 1 : 0) << (i*4 + 3);
+    }
+    prefs.putUShort("phase_cfg", bits);
+}
+
+static void phaseCfgLoad() {
+    // 0x095A = Discharge:RH+Pump, Heating:Dry+HotPlate, Cooling:Dry+Pump
+    uint16_t bits = prefs.getUShort("phase_cfg", 0x095Au);
+    for (int i = 0; i < 3; i++) {
+        g_phase_cfg[i].dry       = (bits >> (i*4 + 0)) & 1;
+        g_phase_cfg[i].rh        = (bits >> (i*4 + 1)) & 1;
+        g_phase_cfg[i].hot_plate = (bits >> (i*4 + 2)) & 1;
+        g_phase_cfg[i].pump      = (bits >> (i*4 + 3)) & 1;
+    }
+}
+
+// =============================================================================
 // Cycle engine
 // =============================================================================
 
-enum class CycleState { IDLE, HUMID, DRIER, PAUSED };
+enum class CycleState { IDLE, HUMID, REGEN, COOLDOWN, PAUSED };
 
 static CycleState g_cycle_state    = CycleState::IDLE;
 static CycleState g_paused_from    = CycleState::IDLE;
 static uint32_t   g_phase_end_ms   = 0;
 static uint32_t   g_paused_left_ms = 0;
-static uint32_t   g_humid_ms       = 20UL * 60000;
-static uint32_t   g_drier_ms       = 40UL * 60000;
+static uint32_t   g_humid_ms       = 13UL * 60000;
+static uint32_t   g_regen_ms       = 14UL * 60000;
+static uint32_t   g_cooldown_ms    = 32UL * 60000;
 static uint32_t   g_target_cycles  = 0;   // 0 = infinite
 
 static void enterPhase(CycleState phase) {
     g_cycle_state = phase;
-    if (phase == CycleState::HUMID) {
-        setSolenoid(g_solenoid_drier, MOSFET_CH0_P0, false);
-        setSolenoid(g_solenoid_humid, MOSFET_CH1_P0, true);
-        g_phase_end_ms = millis() + g_humid_ms;
-    } else {
-        setSolenoid(g_solenoid_humid, MOSFET_CH1_P0, false);
-        setSolenoid(g_solenoid_drier, MOSFET_CH0_P0, true);
-        g_phase_end_ms = millis() + g_drier_ms;
-    }
+    int idx      = (phase == CycleState::HUMID) ? 0 : (phase == CycleState::REGEN) ? 1 : 2;
+    uint32_t dur = (phase == CycleState::HUMID) ? g_humid_ms :
+                   (phase == CycleState::REGEN)  ? g_regen_ms : g_cooldown_ms;
+    const PhaseConfig &cfg = g_phase_cfg[idx];
+    setSolenoid(g_solenoid_humid, MOSFET_CH0_P0, cfg.rh);
+    setSolenoid(g_solenoid_drier, MOSFET_CH1_P0, cfg.dry);
+    setSolenoid(g_solenoid_pump,  MOSFET_CH2_P0, cfg.pump);
+    setPlug(cfg.hot_plate);
+    g_phase_end_ms = millis() + dur;
 }
 
-static void cycleEngineStart(uint32_t humid_ms, uint32_t drier_ms, uint32_t target) {
+static void cycleEngineStart(uint32_t humid_ms, uint32_t regen_ms, uint32_t cooldown_ms, uint32_t target) {
     g_humid_ms      = humid_ms;
-    g_drier_ms      = drier_ms;
+    g_regen_ms      = regen_ms;
+    g_cooldown_ms   = cooldown_ms;
     g_target_cycles = target;
     cycleCountReset();
     enterPhase(CycleState::HUMID);
@@ -198,15 +238,19 @@ static void cycleEngineStart(uint32_t humid_ms, uint32_t drier_ms, uint32_t targ
 
 static void cycleEngineStop() {
     g_cycle_state = CycleState::IDLE;
-    setSolenoid(g_solenoid_humid, MOSFET_CH1_P0, false);
-    setSolenoid(g_solenoid_drier, MOSFET_CH0_P0, false);
-    cycleCountReset();
+    setSolenoid(g_solenoid_humid, MOSFET_CH0_P0, false);
+    setSolenoid(g_solenoid_drier, MOSFET_CH1_P0, false);
+    setSolenoid(g_solenoid_pump,  MOSFET_CH2_P0, false);
+    setPlug(false);
 }
 
 static void cycleEnginePause() {
-    if (g_cycle_state != CycleState::HUMID && g_cycle_state != CycleState::DRIER) return;
+    if (g_cycle_state != CycleState::HUMID &&
+        g_cycle_state != CycleState::REGEN &&
+        g_cycle_state != CycleState::COOLDOWN) return;
     g_paused_from    = g_cycle_state;
-    g_paused_left_ms = g_phase_end_ms - millis();
+    int32_t left = (int32_t)(g_phase_end_ms - millis());
+    g_paused_left_ms = left > 0 ? (uint32_t)left : 0;
     g_cycle_state    = CycleState::PAUSED;
 }
 
@@ -217,12 +261,17 @@ static void cycleEngineResume() {
 }
 
 static void cycleEngineTick() {
-    if (g_cycle_state != CycleState::HUMID && g_cycle_state != CycleState::DRIER) return;
+    if (g_cycle_state != CycleState::HUMID &&
+        g_cycle_state != CycleState::REGEN &&
+        g_cycle_state != CycleState::COOLDOWN) return;
     if ((int32_t)(millis() - g_phase_end_ms) < 0) return;
 
     if (g_cycle_state == CycleState::HUMID) {
-        enterPhase(CycleState::DRIER);
+        enterPhase(CycleState::REGEN);
+    } else if (g_cycle_state == CycleState::REGEN) {
+        enterPhase(CycleState::COOLDOWN);
     } else {
+        // COOLDOWN complete — one full cycle done
         g_cycle_count++;
         cycleCountSave();
         if (g_target_cycles > 0 && g_cycle_count >= g_target_cycles) {
@@ -240,12 +289,22 @@ static uint32_t cycleTimeLeftMs() {
     return left > 0 ? (uint32_t)left : 0;
 }
 
+static const char* phaseNameOf(CycleState s) {
+    switch (s) {
+        case CycleState::HUMID:    return "humid";
+        case CycleState::REGEN:    return "regen";
+        case CycleState::COOLDOWN: return "cooldown";
+        default:                   return "idle";
+    }
+}
+
 static const char* cycleStateName() {
     switch (g_cycle_state) {
-        case CycleState::IDLE:   return "idle";
-        case CycleState::HUMID:  return "humid";
-        case CycleState::DRIER:  return "drier";
-        case CycleState::PAUSED: return "paused";
+        case CycleState::IDLE:     return "idle";
+        case CycleState::HUMID:    return "humid";
+        case CycleState::REGEN:    return "regen";
+        case CycleState::COOLDOWN: return "cooldown";
+        case CycleState::PAUSED:   return "paused";
     }
     return "idle";
 }
@@ -274,14 +333,27 @@ static void emitTelemetry() {
     doc["state"]          = cycleStateName();
     doc["solenoid_humid"] = g_solenoid_humid;
     doc["solenoid_drier"] = g_solenoid_drier;
+    doc["solenoid_pump"]  = g_solenoid_pump;
     doc["cycles"]         = g_cycle_count;
     doc["target"]         = g_target_cycles;
     doc["time_left_ms"]   = cycleTimeLeftMs();
     doc["humid_ms"]       = g_humid_ms;
-    doc["drier_ms"]       = g_drier_ms;
+    doc["regen_ms"]       = g_regen_ms;
+    doc["cooldown_ms"]    = g_cooldown_ms;
+    doc["total_cycle_ms"] = g_humid_ms + g_regen_ms + g_cooldown_ms;
+    if (g_cycle_state == CycleState::PAUSED)
+        doc["paused_from"] = phaseNameOf(g_paused_from);
     doc["temp_c"]         = g_pt1000_temp_c;
-    doc["rtd_fault"]      = g_rtd_fault;
+    doc["rtd_fault"]      = g_rtd_fault && (millis() - g_rtd_fault_since_ms >= 10000);
     doc["thermal"]        = thermalStateName();
+    JsonArray phaseCfg = doc["phase_cfg"].to<JsonArray>();
+    for (int i = 0; i < 3; i++) {
+        JsonObject p = phaseCfg.add<JsonObject>();
+        p["dry"]       = g_phase_cfg[i].dry;
+        p["rh"]        = g_phase_cfg[i].rh;
+        p["hot_plate"] = g_phase_cfg[i].hot_plate;
+        p["pump"]      = g_phase_cfg[i].pump;
+    }
     wsSend(doc);
 }
 
@@ -292,20 +364,32 @@ static void handleCommand(const char *payload) {
     if (!cmd) return;
 
     if (strcmp(cmd, "start") == 0) {
-        uint32_t hms = (uint32_t)(doc["humid_dur"].as<float>() * 60000.0f);
-        uint32_t dms = (uint32_t)(doc["drier_dur"].as<float>() * 60000.0f);
+        uint32_t hms = (uint32_t)(doc["humid_dur"].as<float>()    * 60000.0f);
+        uint32_t rms = (uint32_t)(doc["regen_dur"].as<float>()    * 60000.0f);
+        uint32_t cms = (uint32_t)(doc["cooldown_dur"].as<float>() * 60000.0f);
         uint32_t tgt = doc["target_cycles"] | 0;
-        cycleEngineStart(hms, dms, tgt);
+        cycleEngineStart(hms, rms, cms, tgt);
     } else if (strcmp(cmd, "stop")   == 0) { cycleEngineStop(); }
     else if (strcmp(cmd, "pause")  == 0) { cycleEnginePause(); }
     else if (strcmp(cmd, "resume") == 0) { cycleEngineResume(); }
-    else if (strcmp(cmd, "set_humidity") == 0) setSolenoid(g_solenoid_humid, MOSFET_CH1_P0, doc["val"].as<bool>());
-    else if (strcmp(cmd, "set_drier")    == 0) setSolenoid(g_solenoid_drier, MOSFET_CH0_P0, doc["val"].as<bool>());
+    else if (strcmp(cmd, "set_humidity") == 0) setSolenoid(g_solenoid_humid, MOSFET_CH0_P0, doc["val"].as<bool>());
+    else if (strcmp(cmd, "set_drier")    == 0) setSolenoid(g_solenoid_drier, MOSFET_CH1_P0, doc["val"].as<bool>());
     else if (strcmp(cmd, "reset_thermal_fault") == 0) {
         if (g_thermal_state != ThermalState::OK) {
             g_thermal_state = ThermalState::OK;
-            setPlug(true);
-            Serial.println("[THERMAL] fault reset by operator — plug ON");
+            Serial.println("[THERMAL] fault reset by operator");
+        }
+    }
+    else if (strcmp(cmd, "set_phase_config") == 0) {
+        JsonArrayConst phases = doc["phases"];
+        if (phases.size() == 3) {
+            for (int i = 0; i < 3; i++) {
+                g_phase_cfg[i].dry       = phases[i]["dry"].as<bool>();
+                g_phase_cfg[i].rh        = phases[i]["rh"].as<bool>();
+                g_phase_cfg[i].hot_plate = phases[i]["hot_plate"].as<bool>();
+                g_phase_cfg[i].pump      = phases[i]["pump"].as<bool>();
+            }
+            phaseCfgSave();
         }
     }
     else if (strcmp(cmd, "list_files") == 0) { sdHandleListFiles(); }
@@ -363,7 +447,7 @@ static void sdInit() {
         return;
     }
     g_log_file.println(
-        "millis,state,solenoid_humid,solenoid_drier,"
+        "millis,state,solenoid_humid,solenoid_drier,solenoid_pump,"
         "cycles,target,time_left_ms,temp_c,thermal"
     );
     g_log_file.flush();
@@ -431,11 +515,12 @@ static void sdHandleReadFile(const char *name) {
 static void sdLogRow() {
     if (!g_sd_ready) return;
     size_t written = g_log_file.printf(
-        "%lu,%s,%d,%d,%lu,%lu,%lu,%.2f,%s\n",
+        "%lu,%s,%d,%d,%d,%lu,%lu,%lu,%.2f,%s\n",
         millis(),
         cycleStateName(),
         (int)g_solenoid_humid,
         (int)g_solenoid_drier,
+        (int)g_solenoid_pump,
         (unsigned long)g_cycle_count,
         (unsigned long)g_target_cycles,
         (unsigned long)cycleTimeLeftMs(),
@@ -505,6 +590,7 @@ void setup() {
 
     prefs.begin("mst", false);
     g_cycle_count = prefs.getULong("cycles", 0);
+    phaseCfgLoad();
     Serial.printf("[NVS] cycle count = %lu\n", g_cycle_count);
 
     sdInit();
