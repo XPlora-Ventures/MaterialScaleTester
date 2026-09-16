@@ -102,26 +102,35 @@
 
 <div class="tab">
 
-  <!-- Solenoids -->
+  <!-- Manual Controls -->
   <div class="grid grid-2" style="margin-bottom:16px">
     <div class="card">
-      <h3>Humidity Solenoid — CH0</h3>
+      <h3>Dry</h3>
       <div class="row">
-        <span id="humidPill" class="status-pill off"><span class="dot"></span> CLOSED</span>
-        <button class="btn"       onclick="sendCmd({cmd:'set_humidity',val:true})">Open</button>
-        <button class="btn ghost" onclick="sendCmd({cmd:'set_humidity',val:false})">Close</button>
+        <span id="drierPill" class="status-pill off"><span class="dot"></span> OFF</span>
+        <button class="btn"       onclick="sendCmd({cmd:'set_drier',val:true})">On</button>
+        <button class="btn ghost" onclick="sendCmd({cmd:'set_drier',val:false})">Off</button>
       </div>
     </div>
     <div class="card">
-      <h3>Drier Solenoid — CH1</h3>
+      <h3>Solenoid</h3>
       <div class="row">
-        <span id="drierPill" class="status-pill off"><span class="dot"></span> CLOSED</span>
-        <button class="btn"       onclick="sendCmd({cmd:'set_drier',val:true})">Open</button>
-        <button class="btn ghost" onclick="sendCmd({cmd:'set_drier',val:false})">Close</button>
+        <span id="humidPill" class="status-pill off"><span class="dot"></span> OFF</span>
+        <button class="btn"       onclick="sendCmd({cmd:'set_humidity',val:true})">On</button>
+        <button class="btn ghost" onclick="sendCmd({cmd:'set_humidity',val:false})">Off</button>
       </div>
     </div>
     <div class="card">
-      <h3>Water Pump — CH3</h3>
+      <h3>Heat</h3>
+      <div class="row">
+        <span id="plugPill" class="status-pill off"><span class="dot"></span> OFF</span>
+        <button class="btn"       onclick="plugSet(true)">On</button>
+        <button class="btn ghost" onclick="plugSet(false)">Off</button>
+        <span id="plugStatus" style="font-size:0.8rem;color:#6b7280;margin-left:8px"></span>
+      </div>
+    </div>
+    <div class="card">
+      <h3>Cool</h3>
       <div class="row">
         <span id="pumpPill" class="status-pill off"><span class="dot"></span> OFF</span>
         <button class="btn"       onclick="sendCmd({cmd:'set_pump',val:true})">On</button>
@@ -232,17 +241,6 @@
     </div>
     <div id="sdFileList" style="margin-top:12px;font-size:0.85rem;color:#6b7280">
       Press Refresh to list files.
-    </div>
-  </div>
-
-  <!-- Wall Plug -->
-  <div class="card" style="margin-bottom:16px">
-    <h3>Wall Plug — Brilliant 21884</h3>
-    <div class="row">
-      <span id="plugPill" class="status-pill off"><span class="dot"></span> OFF</span>
-      <button class="btn"       onclick="plugSet(true)">On</button>
-      <button class="btn ghost" onclick="plugSet(false)">Off</button>
-      <span id="plugStatus" style="font-size:0.8rem;color:#6b7280;margin-left:8px"></span>
     </div>
   </div>
 
