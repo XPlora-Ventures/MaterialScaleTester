@@ -20,6 +20,8 @@ def create_blueprint(device_mgr: DeviceManager, csv_logger: CsvLogger, plug: Plu
 
     @bp.route("/api/command", methods=["POST"])
     def api_command():
+        if not device_mgr.connected:
+            return jsonify({"ok": False, "error": "device not connected"}), 503
         device_mgr.send(request.json or {})
         return jsonify({"ok": True})
 

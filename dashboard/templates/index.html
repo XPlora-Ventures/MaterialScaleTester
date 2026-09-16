@@ -359,10 +359,18 @@ function _updateCycleUI(d) {
 
 // ── Commands ──────────────────────────────────────────────────────────────────
 async function sendCmd(obj) {
-  await fetch("/api/command", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify(obj) });
+  const r = await fetch("/api/command", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify(obj) });
+  if (!r.ok) {
+    const d = await r.json().catch(() => ({}));
+    _showAlert(d.error || "Command failed", "#ef4444");
+  }
 }
 
 function cycleStart() {
+  if (!document.getElementById("connDot").classList.contains("connected")) {
+    _showAlert("ESP32 not connected — cannot start cycle", "#ef4444");
+    return;
+  }
   sendCmd({
     cmd: "start",
     humid_dur:     parseFloat(document.getElementById("humidDur").value)    || 13,
