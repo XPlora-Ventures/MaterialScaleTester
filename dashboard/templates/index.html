@@ -120,6 +120,14 @@
         <button class="btn ghost" onclick="sendCmd({cmd:'set_drier',val:false})">Close</button>
       </div>
     </div>
+    <div class="card">
+      <h3>Water Pump — CH3</h3>
+      <div class="row">
+        <span id="pumpPill" class="status-pill off"><span class="dot"></span> OFF</span>
+        <button class="btn"       onclick="sendCmd({cmd:'set_pump',val:true})">On</button>
+        <button class="btn ghost" onclick="sendCmd({cmd:'set_pump',val:false})">Off</button>
+      </div>
+    </div>
   </div>
 
   <!-- Phase / Peripheral Matrix -->
@@ -255,6 +263,7 @@ socket.on("telemetry", d => {
 
   _setPill("humidPill", d.solenoid_humid, d.solenoid_humid ? "OPEN" : "CLOSED");
   _setPill("drierPill", d.solenoid_drier, d.solenoid_drier ? "OPEN" : "CLOSED");
+  _setPill("pumpPill",  d.solenoid_pump,  d.solenoid_pump  ? "ON"   : "OFF");
 
   _updateCycleUI(d);
   _updateThermalUI(d);
