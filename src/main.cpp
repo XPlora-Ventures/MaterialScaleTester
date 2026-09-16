@@ -133,7 +133,7 @@ static uint8_t g_pcf_p0 = 0x00;
 static uint8_t g_pcf_p1 = 0x00;
 static bool    g_solenoid_humid = false;
 static bool    g_solenoid_drier = false;
-static bool    g_solenoid_pump  = false;  // CH3
+static bool    g_solenoid_pump  = false;  // CH2
 
 static void pcfFlush() {
     Wire.beginTransmission(PCF8575_ADDR);
@@ -222,7 +222,7 @@ static void enterPhase(CycleState phase) {
     const PhaseConfig &cfg = g_phase_cfg[idx];
     setSolenoid(g_solenoid_humid, MOSFET_CH0_P0, cfg.rh);
     setSolenoid(g_solenoid_drier, MOSFET_CH1_P0, cfg.dry);
-    setSolenoid(g_solenoid_pump,  MOSFET_CH3_P0, cfg.pump);
+    setSolenoid(g_solenoid_pump,  MOSFET_CH2_P0, cfg.pump);
     setPlug(cfg.hot_plate);
     g_phase_end_ms = millis() + dur;
 }
@@ -240,7 +240,7 @@ static void cycleEngineStop() {
     g_cycle_state = CycleState::IDLE;
     setSolenoid(g_solenoid_humid, MOSFET_CH0_P0, false);
     setSolenoid(g_solenoid_drier, MOSFET_CH1_P0, false);
-    setSolenoid(g_solenoid_pump,  MOSFET_CH3_P0, false);
+    setSolenoid(g_solenoid_pump,  MOSFET_CH2_P0, false);
     setPlug(false);
 }
 
@@ -374,7 +374,7 @@ static void handleCommand(const char *payload) {
     else if (strcmp(cmd, "resume") == 0) { cycleEngineResume(); }
     else if (strcmp(cmd, "set_humidity") == 0) setSolenoid(g_solenoid_humid, MOSFET_CH0_P0, doc["val"].as<bool>());
     else if (strcmp(cmd, "set_drier")    == 0) setSolenoid(g_solenoid_drier, MOSFET_CH1_P0, doc["val"].as<bool>());
-    else if (strcmp(cmd, "set_pump")     == 0) setSolenoid(g_solenoid_pump,  MOSFET_CH3_P0, doc["val"].as<bool>());
+    else if (strcmp(cmd, "set_pump")     == 0) setSolenoid(g_solenoid_pump,  MOSFET_CH2_P0, doc["val"].as<bool>());
     else if (strcmp(cmd, "reset_thermal_fault") == 0) {
         if (g_thermal_state != ThermalState::OK) {
             g_thermal_state = ThermalState::OK;
