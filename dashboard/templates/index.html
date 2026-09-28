@@ -289,12 +289,47 @@ socket.on("plug_state", d => { _setPlugPill(d.on); });
 
 // ── Cycle UI (display only — logic runs on ESP32) ─────────────────────────────
 let _lastState = "idle";
+let _lastCycleData = null;
+
+// Local countdown anchor — synced from telemetry, interpolated each second
+let _countdownAnchorMs   = 0;  // time_left_ms at last telemetry
+let _countdownAnchorTime = 0;  // Date.now() at last telemetry
+let _countdownTimer      = null;
 
 const _phaseInfo = {
   humid:    { color: "#3b82f6", label: "HUMIDITY" },
   regen:    { color: "#f59e0b", label: "REGEN" },
   cooldown: { color: "#06b6d4", label: "COOLDOWN" },
 };
+
+function _renderCountdown() {
+  if (!_lastCycleData) return;
+  const d = _lastCycleData;
+  const state   = d.state || "idle";
+  const paused  = state === "paused";
+
+  // Interpolate time remaining from anchor
+  let leftMs;
+  if (paused) {
+    leftMs = _countdownAnchorMs;
+  } else {
+    leftMs = Math.max(0, _countdownAnchorMs - (Date.now() - _countdownAnchorTime));
+  }
+
+  const mins = String(Math.floor(leftMs / 60000)).padStart(2, "0");
+  const secs = String(Math.floor((leftMs % 60000) / 1000)).padStart(2, "0");
+  document.getElementById("cycleTimeLeft").textContent = mins + ":" + secs;
+
+  // progress bar
+  const phaseName   = paused ? (d.paused_from || "humid") : state;
+  const durationMap = { humid: d.humid_ms, regen: d.regen_ms, cooldown: d.cooldown_ms };
+  const totalMs     = durationMap[phaseName] || 1;
+  const pct         = Math.min(100, (leftMs / totalMs) * 100);
+  const color       = paused ? "#4b5563" : (_phaseInfo[phaseName] || _phaseInfo.humid).color;
+  const bar         = document.getElementById("cycleBar");
+  bar.style.width      = pct + "%";
+  bar.style.background = color;
+}
 
 function _updateCycleUI(d) {
   const state   = d.state || "idle";
@@ -321,7 +356,12 @@ function _updateCycleUI(d) {
 
   // countdown panel
   document.getElementById("cycleCountdown").style.display = active ? "" : "none";
-  if (!active) return;
+  if (!active) {
+    clearInterval(_countdownTimer);
+    _countdownTimer = null;
+    _lastCycleData  = null;
+    return;
+  }
 
   // determine active phase (use paused_from when paused)
   const phaseName = paused ? (d.paused_from || _lastState || "humid") : state;
@@ -332,19 +372,21 @@ function _updateCycleUI(d) {
   pill.className = "status-pill " + (paused ? "off" : "on");
   pill.innerHTML = `<span class="dot" style="background:${color}"></span> ${phase.label}${paused ? " (PAUSED)" : ""}`;
 
-  // time left
-  const leftMs = d.time_left_ms || 0;
-  const mins   = String(Math.floor(leftMs / 60000)).padStart(2, "0");
-  const secs   = String(Math.floor((leftMs % 60000) / 1000)).padStart(2, "0");
-  document.getElementById("cycleTimeLeft").textContent = mins + ":" + secs;
+  // Sync anchor from telemetry — both browsers share the same server time_left_ms
+  _countdownAnchorMs   = d.time_left_ms || 0;
+  _countdownAnchorTime = Date.now();
+  _lastCycleData       = d;
+  _renderCountdown();
 
-  // progress bar — use the phase's own duration
-  const durationMap = { humid: d.humid_ms, regen: d.regen_ms, cooldown: d.cooldown_ms };
-  const totalMs = durationMap[phaseName] || 1;
-  const pct     = Math.min(100, (leftMs / totalMs) * 100);
-  const bar     = document.getElementById("cycleBar");
-  bar.style.width      = pct + "%";
-  bar.style.background = color;
+  // Start local 1-second ticker if not already running
+  if (!_countdownTimer) {
+    _countdownTimer = setInterval(_renderCountdown, 1000);
+  }
+
+  // sync duration inputs from live telemetry so all browsers agree
+  if (d.humid_ms)    document.getElementById("humidDur").value    = Math.round(d.humid_ms    / 60000);
+  if (d.regen_ms)    document.getElementById("regenDur").value    = Math.round(d.regen_ms    / 60000);
+  if (d.cooldown_ms) document.getElementById("cooldownDur").value = Math.round(d.cooldown_ms / 60000);
 
   // update total-per-cycle display from live telemetry if available
   if (d.total_cycle_ms)
