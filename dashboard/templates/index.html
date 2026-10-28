@@ -290,6 +290,7 @@ socket.on("plug_state", d => { _setPlugPill(d.on); });
 // ── Cycle UI (display only — logic runs on ESP32) ─────────────────────────────
 let _lastState = "idle";
 let _lastCycleData = null;
+let _durSynced = false;
 
 // Local countdown anchor — synced from telemetry, interpolated each second
 let _countdownAnchorMs   = 0;  // time_left_ms at last telemetry
@@ -383,10 +384,14 @@ function _updateCycleUI(d) {
     _countdownTimer = setInterval(_renderCountdown, 1000);
   }
 
-  // sync duration inputs from live telemetry so all browsers agree
-  if (d.humid_ms)    document.getElementById("humidDur").value    = Math.round(d.humid_ms    / 60000);
-  if (d.regen_ms)    document.getElementById("regenDur").value    = Math.round(d.regen_ms    / 60000);
-  if (d.cooldown_ms) document.getElementById("cooldownDur").value = Math.round(d.cooldown_ms / 60000);
+  // sync duration inputs from telemetry when running (inputs are disabled anyway)
+  // or once on page load (so a fresh tab shows correct values while paused)
+  if (running || !_durSynced) {
+    if (d.humid_ms)    document.getElementById("humidDur").value    = Math.round(d.humid_ms    / 60000);
+    if (d.regen_ms)    document.getElementById("regenDur").value    = Math.round(d.regen_ms    / 60000);
+    if (d.cooldown_ms) document.getElementById("cooldownDur").value = Math.round(d.cooldown_ms / 60000);
+    if (d.humid_ms || d.regen_ms || d.cooldown_ms) _durSynced = true;
+  }
 
   // update total-per-cycle display from live telemetry if available
   if (d.total_cycle_ms)
