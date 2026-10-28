@@ -18,6 +18,7 @@ from routes import create_blueprint
 
 app = Flask(__name__, template_folder="templates")
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev")
+app.config["SOCK_SERVER_OPTIONS"] = {"ping_interval": 25}
 socketio = SocketIO(app, cors_allowed_origins="*")
 sock = Sock(app)
 
