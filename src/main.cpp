@@ -371,7 +371,15 @@ static void handleCommand(const char *payload) {
         cycleEngineStart(hms, rms, cms, tgt);
     } else if (strcmp(cmd, "stop")   == 0) { cycleEngineStop(); }
     else if (strcmp(cmd, "pause")  == 0) { cycleEnginePause(); }
-    else if (strcmp(cmd, "resume") == 0) { cycleEngineResume(); }
+    else if (strcmp(cmd, "resume") == 0) {
+        float hd = doc["humid_dur"]    | -1.0f;
+        float rd = doc["regen_dur"]    | -1.0f;
+        float cd = doc["cooldown_dur"] | -1.0f;
+        if (hd > 0) g_humid_ms    = (uint32_t)(hd * 60000.0f);
+        if (rd > 0) g_regen_ms    = (uint32_t)(rd * 60000.0f);
+        if (cd > 0) g_cooldown_ms = (uint32_t)(cd * 60000.0f);
+        cycleEngineResume();
+    }
     else if (strcmp(cmd, "set_humidity") == 0) setSolenoid(g_solenoid_humid, MOSFET_CH0_P0, doc["val"].as<bool>());
     else if (strcmp(cmd, "set_drier")    == 0) setSolenoid(g_solenoid_drier, MOSFET_CH1_P0, doc["val"].as<bool>());
     else if (strcmp(cmd, "set_pump")     == 0) setSolenoid(g_solenoid_pump,  MOSFET_CH2_P0, doc["val"].as<bool>());

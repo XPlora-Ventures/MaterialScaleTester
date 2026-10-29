@@ -470,7 +470,18 @@ function _updateMatrixUI(d) {
   });
 }
 
-function cyclePauseResume() { sendCmd({ cmd: _lastState === "paused" ? "resume" : "pause" }); }
+function cyclePauseResume() {
+  if (_lastState === "paused") {
+    sendCmd({
+      cmd:          "resume",
+      humid_dur:    parseFloat(document.getElementById("humidDur").value)    || 13,
+      regen_dur:    parseFloat(document.getElementById("regenDur").value)    || 14,
+      cooldown_dur: parseFloat(document.getElementById("cooldownDur").value) || 32,
+    });
+  } else {
+    sendCmd({ cmd: "pause" });
+  }
+}
 function cycleStop()        { sendCmd({ cmd: "stop" }); }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
